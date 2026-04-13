@@ -1,0 +1,19 @@
+{
+  "name": "kook-bot-saas",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Kook Bot SaaS Platform — multi-tenant bot hosting with plugin marketplace",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev:platform": "pnpm --filter @kook-saas/platform dev",
+    "dev:web": "pnpm --filter @kook-saas/web dev",
+    "db:generate": "pnpm --filter @kook-saas/platform db:generate",
+    "db:migrate": "pnpm --filter @kook-saas/platform db:migrate",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

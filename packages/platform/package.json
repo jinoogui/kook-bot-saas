@@ -1,0 +1,45 @@
+{
+  "name": "@kook-saas/platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@kook-saas/shared": "workspace:*",
+    "@kook-saas/bot-engine": "workspace:*",
+    "@kook-saas/plugins": "workspace:*",
+    "fastify": "^4.27.0",
+    "@fastify/cors": "^9.0.0",
+    "@fastify/formbody": "^7.4.0",
+    "@fastify/jwt": "^8.0.0",
+    "@fastify/swagger": "^8.14.0",
+    "@fastify/swagger-ui": "^3.0.0",
+    "@fastify/static": "^7.0.0",
+    "drizzle-orm": "^0.30.10",
+    "mysql2": "^3.9.0",
+    "ioredis": "^5.3.2",
+    "axios": "^1.6.8",
+    "zod": "^3.22.4",
+    "@node-rs/bcrypt": "^1.10.3",
+    "http-proxy": "^1.18.1",
+    "pino": "^9.0.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.20.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.12.0",
+    "@types/http-proxy": "^1.17.14"
+  }
+}

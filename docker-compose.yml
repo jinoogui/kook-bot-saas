@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: kook_saas_platform
+    ports:
+      - '3306:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - '5000:5000'
+      - '6001-6099:6001-6099'
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      NODE_ENV: production
+      PLATFORM_PORT: 5000
+      PLATFORM_MYSQL_URL: mysql://root:root_password@mysql:3306/kook_saas_platform
+      TENANT_MYSQL_URL: mysql://root:root_password@mysql:3306/kook_saas_tenants
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: change-me-to-a-32-char-secret-key!!
+      INSTANCE_PORT_START: 6001
+      INSTANCE_PORT_END: 6099
+
+volumes:
+  mysql_data:
+  redis_data:
