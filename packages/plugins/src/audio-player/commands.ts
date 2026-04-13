@@ -18,7 +18,8 @@ export function getCommands(): CommandDefinition[] {
           return
         }
 
-        const service = new AudioPlayerService(ctx)
+        const service = ctx.getPluginService<AudioPlayerService>('audio-player')
+        if (!service) return
         let player = service.getPlayer(guildId)
         if (!player) {
           // Try to join voice channel (use channelId as voice channel for now)
@@ -48,7 +49,8 @@ export function getCommands(): CommandDefinition[] {
         const guildId = event.extra?.guild_id
         if (!guildId) return
 
-        const service = new AudioPlayerService(ctx)
+        const service = ctx.getPluginService<AudioPlayerService>('audio-player')
+        if (!service) return
         await service.destroyPlayer(guildId, channelId)
         await ctx.kookApi.sendKmarkdownMessage(channelId, '已停止播放')
       },
@@ -62,7 +64,8 @@ export function getCommands(): CommandDefinition[] {
         const guildId = event.extra?.guild_id
         if (!guildId) return
 
-        const service = new AudioPlayerService(ctx)
+        const service = ctx.getPluginService<AudioPlayerService>('audio-player')
+        if (!service) return
         const player = service.getPlayer(guildId)
         if (!player || !player.isPlaying()) {
           await ctx.kookApi.sendKmarkdownMessage(channelId, '当前没有播放中的歌曲')
@@ -81,7 +84,8 @@ export function getCommands(): CommandDefinition[] {
         const guildId = event.extra?.guild_id
         if (!guildId) return
 
-        const service = new AudioPlayerService(ctx)
+        const service = ctx.getPluginService<AudioPlayerService>('audio-player')
+        if (!service) return
         const player = service.getPlayer(guildId)
         if (!player) {
           await ctx.kookApi.sendKmarkdownMessage(channelId, '当前没有活跃的播放器')

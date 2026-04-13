@@ -1,0 +1,1 @@
+ALTER TABLE `platform_users` ADD `role` varchar(16) DEFAULT 'user' NOT NULL;

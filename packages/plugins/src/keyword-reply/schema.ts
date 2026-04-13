@@ -21,4 +21,6 @@ export const pluginAutoReplies = mysqlTable('plugin_auto_replies', {
   response:  text('response').notNull(),
   enabled:   int('enabled').default(1),
   createdAt: timestamp('created_at').defaultNow(),
-})
+}, (t) => ({
+  idxTenantGuild: index('idx_tenant_guild').on(t.tenantId, t.guildId),
+}))

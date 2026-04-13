@@ -1,7 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import type { TenantService } from '../services/TenantService.js'
+import type { AuditService } from '../services/AuditService.js'
 
-export function registerTenantRoutes(app: FastifyInstance, tenantService: TenantService) {
+export function registerTenantRoutes(
+  app: FastifyInstance,
+  tenantService: TenantService,
+  instanceManager?: { stopInstance: (id: string) => Promise<void> },
+  auditService?: AuditService,
+) {
   // 创建租户
   app.post('/api/tenants', {
     preHandler: [app.authenticate],
@@ -13,6 +19,10 @@ export function registerTenantRoutes(app: FastifyInstance, tenantService: Tenant
         return reply.code(400).send({ error: '请填写名称和 Bot Token' })
       }
       const tenant = await tenantService.create(userId, name, botToken, verifyToken, encryptKey)
+      await auditService?.log({
+        userId, action: 'tenant.create', resource: 'tenant',
+        resourceId: tenant.id, details: { name }, ipAddress: request.ip,
+      })
       return reply.send({ success: true, data: tenant })
     } catch (err: any) {
       return reply.code(400).send({ error: err.message })
@@ -64,7 +74,19 @@ export function registerTenantRoutes(app: FastifyInstance, tenantService: Tenant
   }, async (request, reply) => {
     const { userId } = request.user as any
     const { id } = request.params as any
+    // Stop instance before deleting
+    if (instanceManager) {
+      try {
+        await instanceManager.stopInstance(id)
+      } catch {
+        // Instance may not be running, ignore
+      }
+    }
     await tenantService.delete(id, userId)
+    await auditService?.log({
+      userId, action: 'tenant.delete', resource: 'tenant',
+      resourceId: id, details: {}, ipAddress: request.ip,
+    })
     return reply.send({ success: true, message: '已删除' })
   })
 }

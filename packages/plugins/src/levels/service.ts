@@ -7,7 +7,7 @@ const DEFAULT_XP_COOLDOWN    = 60 // 秒
 
 export class LevelService {
   // 冷却追踪：`${userId}:${guildId}` -> 上次获得经验时间戳
-  private xpCooldown = new Map<string, number>()
+  private static xpCooldown = new Map<string, number>()
 
   constructor(private ctx: PluginContext) {}
 
@@ -56,10 +56,10 @@ export class LevelService {
 
     // 冷却检查
     const cooldownKey = `${userId}:${guildId}`
-    const lastXp = this.xpCooldown.get(cooldownKey) ?? 0
+    const lastXp = LevelService.xpCooldown.get(cooldownKey) ?? 0
     const now    = Date.now()
     if (now - lastXp < cfg.xpCooldown * 1000) return
-    this.xpCooldown.set(cooldownKey, now)
+    LevelService.xpCooldown.set(cooldownKey, now)
 
     // 获取当前经验
     const [row] = await this.ctx.db.drizzle
@@ -93,7 +93,7 @@ export class LevelService {
       .onDuplicateKeyUpdate({
         set: {
           messageCount: sql`message_count + 1`,
-          totalXp: sql`${newXp}`,
+          totalXp: sql`total_xp + ${cfg.xpPerMessage}`,
           lastActiveAt: new Date(),
         },
       })

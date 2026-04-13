@@ -53,7 +53,9 @@ export const pluginPointsShopExchanges = mysqlTable('plugin_points_shop_exchange
   itemPrice: int('item_price').notNull(),
   confirmed: int('confirmed').default(0),
   createdAt: timestamp('created_at').defaultNow(),
-})
+}, (t) => ({
+  idxTenantUserGuild: index('idx_tenant_user_guild').on(t.tenantId, t.userId, t.guildId),
+}))
 
 export const pluginPointsRewardRecords = mysqlTable('plugin_points_reward_records', {
   id:           int('id').primaryKey().autoincrement(),

@@ -3,12 +3,16 @@ import api, { type User } from '../lib/api';
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('user');
+      if (saved && saved !== 'undefined') return JSON.parse(saved);
+    } catch {}
+    return null;
   });
   const [loading, setLoading] = useState(true);
 
   const isAuthenticated = !!user && !!localStorage.getItem('token');
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -16,8 +20,9 @@ export function useAuth() {
       api.auth
         .getMe()
         .then((res) => {
-          setUser(res.data.user);
-          localStorage.setItem('user', JSON.stringify(res.data.user));
+          const userData = res.data as any;
+          setUser(userData);
+          localStorage.setItem('user', JSON.stringify(userData));
         })
         .catch(() => {
           localStorage.removeItem('token');
@@ -32,8 +37,14 @@ export function useAuth() {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.auth.login(email, password);
-    const { token, user: userData } = res.data;
-    localStorage.setItem('token', token);
+    const payload = res.data as any;
+    const userData: User = {
+      id: String(payload.userId),
+      email,
+      username: payload.username,
+      role: payload.role ?? 'user',
+    };
+    localStorage.setItem('token', payload.token);
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
     return userData;
@@ -41,8 +52,14 @@ export function useAuth() {
 
   const register = useCallback(async (email: string, username: string, password: string) => {
     const res = await api.auth.register(email, username, password);
-    const { token, user: userData } = res.data;
-    localStorage.setItem('token', token);
+    const payload = res.data as any;
+    const userData: User = {
+      id: String(payload.userId),
+      email,
+      username: payload.username,
+      role: payload.role ?? 'user',
+    };
+    localStorage.setItem('token', payload.token);
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
     return userData;
@@ -54,5 +71,5 @@ export function useAuth() {
     setUser(null);
   }, []);
 
-  return { user, loading, isAuthenticated, login, register, logout };
+  return { user, loading, isAuthenticated, isAdmin, login, register, logout };
 }

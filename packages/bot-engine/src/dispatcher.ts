@@ -48,7 +48,7 @@ export class Dispatcher {
     }
 
     // Sort by priority ascending (lower number = higher priority)
-    this.handlers.sort((a, b) => a.definition.priority - b.definition.priority)
+    this.handlers.sort((a, b) => (a.definition.priority ?? 0) - (b.definition.priority ?? 0))
   }
 
   /**

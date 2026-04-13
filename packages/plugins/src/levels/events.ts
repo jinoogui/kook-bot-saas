@@ -1,13 +1,11 @@
 import type { EventHandlerDefinition, KookEvent, PluginContext } from '@kook-saas/shared'
-import { LevelService } from './service.js'
 
 export function getEventHandlers(): EventHandlerDefinition[] {
   return [
     {
       eventType: 'message',
-      priority: 5, // after normal handlers
+      priority: 5,
       handler: async (event: KookEvent, ctx: PluginContext): Promise<boolean> => {
-        // Skip bot messages and system messages
         if (event.extra?.author?.bot) return false
 
         const userId = event.author_id
@@ -17,7 +15,8 @@ export function getEventHandlers(): EventHandlerDefinition[] {
 
         if (!userId || !guildId) return false
 
-        const service = new LevelService(ctx)
+        const service = ctx.getPluginService<{ onMessage: (userId: string, guildId: string, channelId: string, username: string) => Promise<void> }>('levels')
+        if (!service) return false
         await service.onMessage(userId, guildId, channelId, username)
         return false
       },

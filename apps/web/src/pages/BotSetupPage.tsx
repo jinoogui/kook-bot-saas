@@ -15,36 +15,44 @@ export default function BotSetupPage() {
   const [verifyToken, setVerifyToken] = useState('');
   const [encryptKey, setEncryptKey] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
   const { data: tenants } = useQuery({
     queryKey: ['tenants'],
-    queryFn: () => api.tenants.list().then((r) => r.data.tenants),
+    queryFn: () => api.tenants.list().then((r) => r.data),
   });
 
   const { data: tenant, isLoading: tenantLoading } = useQuery({
     queryKey: ['tenant', selectedTenant],
-    queryFn: () => api.tenants.get(selectedTenant).then((r) => r.data.tenant),
+    queryFn: () => api.tenants.get(selectedTenant).then((r) => r.data),
     enabled: !!selectedTenant,
   });
 
   useEffect(() => {
-    if (tenant) {
-      setName(tenant.name);
-      setBotToken(tenant.bot_token);
-      setVerifyToken(tenant.verify_token || '');
-      setEncryptKey(tenant.encrypt_key || '');
+    if (tenant && !initialized) {
+      setName(tenant.name || '');
+      setVerifyToken(tenant.verifyToken || '');
+      setEncryptKey(tenant.encryptKey || '');
+      // Don't overwrite bot token from API response (it's not returned for security)
+      setInitialized(true);
     }
-  }, [tenant]);
+  }, [tenant, initialized]);
+
+  // When tenant selection changes, reset form
+  useEffect(() => {
+    setInitialized(false);
+    setBotToken('');
+  }, [selectedTenant]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: Partial<Tenant>) => api.tenants.update(selectedTenant, data),
+    mutationFn: (data: Record<string, unknown>) => api.tenants.update(selectedTenant, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant', selectedTenant] });
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
-      setMessage({ type: 'success', text: '\u4FDD\u5B58\u6210\u529F' });
+      setMessage({ type: 'success', text: '保存成功' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '\u4FDD\u5B58\u5931\u8D25' }),
+    onError: () => setMessage({ type: 'error', text: '保存失败' }),
   });
 
   const startMutation = useMutation({
@@ -52,10 +60,10 @@ export default function BotSetupPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant', selectedTenant] });
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
-      setMessage({ type: 'success', text: 'Bot \u5DF2\u542F\u52A8' });
+      setMessage({ type: 'success', text: 'Bot 已启动' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '\u542F\u52A8\u5931\u8D25' }),
+    onError: () => setMessage({ type: 'error', text: '启动失败' }),
   });
 
   const stopMutation = useMutation({
@@ -63,10 +71,10 @@ export default function BotSetupPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant', selectedTenant] });
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
-      setMessage({ type: 'success', text: 'Bot \u5DF2\u505C\u6B62' });
+      setMessage({ type: 'success', text: 'Bot 已停止' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '\u505C\u6B62\u5931\u8D25' }),
+    onError: () => setMessage({ type: 'error', text: '停止失败' }),
   });
 
   const restartMutation = useMutation({
@@ -74,19 +82,19 @@ export default function BotSetupPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant', selectedTenant] });
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
-      setMessage({ type: 'success', text: 'Bot \u5DF2\u91CD\u542F' });
+      setMessage({ type: 'success', text: 'Bot 已重启' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '\u91CD\u542F\u5931\u8D25' }),
+    onError: () => setMessage({ type: 'error', text: '重启失败' }),
   });
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     updateMutation.mutate({
       name,
-      bot_token: botToken,
-      verify_token: verifyToken || undefined,
-      encrypt_key: encryptKey || undefined,
+      botToken,
+      verifyToken: verifyToken || undefined,
+      encryptKey: encryptKey || undefined,
     });
   };
 
@@ -95,19 +103,19 @@ export default function BotSetupPage() {
       case 'running':
         return (
           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700">
-            <CheckCircle size={14} /> \u8FD0\u884C\u4E2D
+            <CheckCircle size={14} /> 运行中
           </span>
         );
       case 'stopped':
         return (
           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
-            <XCircle size={14} /> \u5DF2\u505C\u6B62
+            <XCircle size={14} /> 已停止
           </span>
         );
       case 'error':
         return (
           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-700">
-            <AlertCircle size={14} /> \u9519\u8BEF
+            <AlertCircle size={14} /> 错误
           </span>
         );
       default:
@@ -118,19 +126,19 @@ export default function BotSetupPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Bot \u8BBE\u7F6E</h2>
-        <p className="text-gray-500 text-sm mt-1">\u914D\u7F6E\u548C\u7BA1\u7406\u4F60\u7684 Bot \u5B9E\u4F8B</p>
+        <h2 className="text-2xl font-bold text-gray-900">Bot 设置</h2>
+        <p className="text-gray-500 text-sm mt-1">配置和管理你的 Bot 实例</p>
       </div>
 
       {/* Tenant selector */}
       <div className="card">
-        <label className="block text-sm font-medium text-gray-700 mb-1">\u9009\u62E9 Bot</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">选择 Bot</label>
         <select
           className="input-field"
           value={selectedTenant}
           onChange={(e) => setSelectedTenant(e.target.value)}
         >
-          <option value="">\u8BF7\u9009\u62E9\u4E00\u4E2A Bot</option>
+          <option value="">请选择一个 Bot</option>
           {tenants?.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
@@ -140,7 +148,7 @@ export default function BotSetupPage() {
       </div>
 
       {selectedTenant && tenantLoading && (
-        <div className="card text-center py-8 text-gray-500">\u52A0\u8F7D\u4E2D...</div>
+        <div className="card text-center py-8 text-gray-500">加载中...</div>
       )}
 
       {selectedTenant && tenant && (
@@ -148,7 +156,7 @@ export default function BotSetupPage() {
           {/* Status + Actions */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">\u5B9E\u4F8B\u72B6\u6001</h3>
+              <h3 className="text-lg font-semibold">实例状态</h3>
               {statusBadge(tenant.status)}
             </div>
             <div className="flex gap-2">
@@ -157,28 +165,28 @@ export default function BotSetupPage() {
                 onClick={() => startMutation.mutate()}
                 disabled={tenant.status === 'running' || startMutation.isPending}
               >
-                <Play size={14} /> \u542F\u52A8
+                <Play size={14} /> 启动
               </button>
               <button
                 className="btn-secondary flex items-center gap-1.5 text-sm"
                 onClick={() => stopMutation.mutate()}
                 disabled={tenant.status === 'stopped' || stopMutation.isPending}
               >
-                <Square size={14} /> \u505C\u6B62
+                <Square size={14} /> 停止
               </button>
               <button
                 className="btn-secondary flex items-center gap-1.5 text-sm"
                 onClick={() => restartMutation.mutate()}
                 disabled={tenant.status !== 'running' || restartMutation.isPending}
               >
-                <RotateCw size={14} /> \u91CD\u542F
+                <RotateCw size={14} /> 重启
               </button>
             </div>
           </div>
 
           {/* Config form */}
           <div className="card">
-            <h3 className="text-lg font-semibold mb-4">Bot \u914D\u7F6E</h3>
+            <h3 className="text-lg font-semibold mb-4">Bot 配置</h3>
 
             {message && (
               <div
@@ -194,7 +202,7 @@ export default function BotSetupPage() {
 
             <form onSubmit={handleSave} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bot \u540D\u79F0</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bot 名称</label>
                 <input
                   className="input-field"
                   value={name}
@@ -207,6 +215,7 @@ export default function BotSetupPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Bot Token</label>
                 <input
                   className="input-field font-mono text-sm"
+                  type="password"
                   value={botToken}
                   onChange={(e) => setBotToken(e.target.value)}
                   required
@@ -215,25 +224,27 @@ export default function BotSetupPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Verify Token <span className="text-gray-400">(\u53EF\u9009)</span>
+                  Verify Token <span className="text-gray-400">(可选)</span>
                 </label>
                 <input
                   className="input-field font-mono text-sm"
+                  type="password"
                   value={verifyToken}
                   onChange={(e) => setVerifyToken(e.target.value)}
-                  placeholder="\u7528\u4E8E Webhook \u9A8C\u8BC1"
+                  placeholder="用于 Webhook 验证"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Encrypt Key <span className="text-gray-400">(\u53EF\u9009)</span>
+                  Encrypt Key <span className="text-gray-400">(可选)</span>
                 </label>
                 <input
                   className="input-field font-mono text-sm"
+                  type="password"
                   value={encryptKey}
                   onChange={(e) => setEncryptKey(e.target.value)}
-                  placeholder="\u7528\u4E8E\u6D88\u606F\u52A0\u5BC6"
+                  placeholder="用于消息加密"
                 />
               </div>
 
@@ -243,7 +254,7 @@ export default function BotSetupPage() {
                 disabled={updateMutation.isPending}
               >
                 <Save size={16} />
-                {updateMutation.isPending ? '\u4FDD\u5B58\u4E2D...' : '\u4FDD\u5B58\u914D\u7F6E'}
+                {updateMutation.isPending ? '保存中...' : '保存配置'}
               </button>
             </form>
           </div>

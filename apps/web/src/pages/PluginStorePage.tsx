@@ -4,24 +4,24 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Tag, RefreshCw } from 'lucide-react';
 import api, { type Plugin } from '../lib/api';
 
-const CATEGORY_ALL = '\u5168\u90E8';
+const CATEGORY_ALL = '全部';
 
 export default function PluginStorePage() {
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState(CATEGORY_ALL);
   const [search, setSearch] = useState('');
 
-  const { data: plugins, isLoading } = useQuery({
+  const { data: plugins, isLoading, error } = useQuery({
     queryKey: ['plugins'],
-    queryFn: () => api.plugins.list().then((r) => r.data.plugins),
+    queryFn: () => api.plugins.list().then((r) => r.data),
   });
 
-  const categories = [
+  const categories: string[] = [
     CATEGORY_ALL,
-    ...new Set((plugins || []).map((p) => p.category).filter(Boolean)),
+    ...new Set((plugins || []).map((p: Plugin) => p.category).filter(Boolean)),
   ];
 
-  const filtered = (plugins || []).filter((p) => {
+  const filtered = (plugins || []).filter((p: Plugin) => {
     const matchCategory = activeCategory === CATEGORY_ALL || p.category === activeCategory;
     const matchSearch =
       !search ||
@@ -31,12 +31,12 @@ export default function PluginStorePage() {
   });
 
   const priceLabel = (price: number) => {
-    if (price === 0) return '\u514D\u8D39';
-    return `\u00A5${price}/\u6708`;
+    if (!price || price === 0) return '免费';
+    return `¥${(price / 100).toFixed(0)}/月`;
   };
 
   const priceColor = (price: number) => {
-    if (price === 0) return 'bg-green-100 text-green-700';
+    if (!price || price === 0) return 'bg-green-100 text-green-700';
     return 'bg-amber-100 text-amber-700';
   };
 
@@ -48,11 +48,19 @@ export default function PluginStorePage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="card text-center text-red-600 py-8">
+        <p>加载插件列表失败，请刷新重试</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">\u63D2\u4EF6\u5546\u5E97</h2>
-        <p className="text-gray-500 text-sm mt-1">\u6D4F\u89C8\u548C\u8BA2\u9605\u63D2\u4EF6\u4E3A\u4F60\u7684 Bot \u6DFB\u52A0\u529F\u80FD</p>
+        <h2 className="text-2xl font-bold text-gray-900">插件商店</h2>
+        <p className="text-gray-500 text-sm mt-1">浏览和订阅插件为你的 Bot 添加功能</p>
       </div>
 
       {/* Search */}
@@ -60,7 +68,7 @@ export default function PluginStorePage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
         <input
           className="input-field pl-10"
-          placeholder="\u641C\u7D22\u63D2\u4EF6..."
+          placeholder="搜索插件..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -86,7 +94,7 @@ export default function PluginStorePage() {
       {/* Plugin grid */}
       {filtered.length === 0 ? (
         <div className="card text-center py-12 text-gray-500">
-          <p>\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u63D2\u4EF6</p>
+          <p>没有找到匹配的插件</p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -123,9 +131,9 @@ function PluginCard({
       <div className="flex items-start justify-between mb-2">
         <h3 className="font-semibold text-gray-900">{plugin.name}</h3>
         <span
-          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${priceColor(plugin.price_monthly)}`}
+          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${priceColor(plugin.priceMonthly)}`}
         >
-          {priceLabel(plugin.price_monthly)}
+          {priceLabel(plugin.priceMonthly)}
         </span>
       </div>
 
@@ -142,7 +150,7 @@ function PluginCard({
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-400">v{plugin.version}</span>
         <button className="btn-primary text-sm" onClick={onSubscribe}>
-          \u8BA2\u9605 / \u914D\u7F6E
+          订阅 / 配置
         </button>
       </div>
     </div>

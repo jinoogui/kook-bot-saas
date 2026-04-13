@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, int, timestamp, text, boolean, index, unique } from 'drizzle-orm/mysql-core'
+import { mysqlTable, varchar, int, timestamp, text, boolean, index, unique, json } from 'drizzle-orm/mysql-core'
 
 // ═══════════════════════════════════════════════════
 //  平台用户
@@ -9,6 +9,7 @@ export const platformUsers = mysqlTable('platform_users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   username: varchar('username', { length: 64 }).notNull(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+  role: varchar('role', { length: 16 }).notNull().default('user'), // user | admin
   status: varchar('status', { length: 16 }).notNull().default('active'), // active | suspended | deleted
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
@@ -49,7 +50,7 @@ export const pluginCatalog = mysqlTable('plugin_catalog', {
   priceYearly: int('price_yearly').default(0),
   dependencies: text('dependencies'), // JSON array of plugin IDs
   version: varchar('version', { length: 32 }).notNull().default('1.0.0'),
-  enabled: int('enabled').default(1),
+  enabled: int('enabled').default(1), // int used as boolean (0/1) for MySQL compatibility
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
 })
@@ -66,7 +67,7 @@ export const subscriptions = mysqlTable('subscriptions', {
   planType: varchar('plan_type', { length: 16 }).notNull().default('monthly'), // monthly | yearly | lifetime
   startedAt: timestamp('started_at').defaultNow(),
   expiresAt: timestamp('expires_at'),
-  isEnabled: int('is_enabled').default(1), // 用户可手动禁用
+  isEnabled: int('is_enabled').default(1), // int used as boolean (0/1) for MySQL compatibility — 用户可手动禁用
   configJson: text('config_json'), // 插件的用户自定义配置
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
@@ -109,4 +110,23 @@ export const instanceLogs = mysqlTable('instance_logs', {
 }, (t) => ({
   idxTenant: index('idx_tenant').on(t.tenantId),
   idxCreated: index('idx_created').on(t.createdAt),
+}))
+
+// ═══════════════════════════════════════════════════
+//  审计日志
+// ═══════════════════════════════════════════════════
+
+export const auditLogs = mysqlTable('audit_logs', {
+  id: int('id').primaryKey().autoincrement(),
+  userId: int('user_id').notNull(),
+  action: varchar('action', { length: 64 }).notNull(), // e.g. tenant.create, instance.start
+  resource: varchar('resource', { length: 32 }).notNull(), // e.g. tenant, instance, subscription
+  resourceId: varchar('resource_id', { length: 128 }),
+  details: text('details'), // JSON 详情
+  ipAddress: varchar('ip_address', { length: 45 }),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (t) => ({
+  idxUserId: index('idx_audit_user').on(t.userId),
+  idxAction: index('idx_audit_action').on(t.action),
+  idxCreatedAt: index('idx_audit_created').on(t.createdAt),
 }))

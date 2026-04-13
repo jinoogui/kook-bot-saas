@@ -3,6 +3,7 @@ import type { TimerDefinition, PluginContext } from '@kook-saas/shared'
 export class TimerManager {
   /** pluginId → list of interval handles */
   private readonly timers = new Map<string, NodeJS.Timeout[]>()
+  private readonly runningFlags = new Map<string, boolean>()
 
   /**
    * Register and start timers for a plugin.
@@ -22,10 +23,17 @@ export class TimerManager {
         })
       }
 
+      const timerKey = `${pluginId}:${timer.name}`
       const handle = setInterval(() => {
-        timer.handler(ctx).catch((err) => {
-          ctx.logger.error(`Timer "${timer.name}" error: ${err}`)
-        })
+        if (this.runningFlags.get(timerKey)) return
+        this.runningFlags.set(timerKey, true)
+        timer.handler(ctx)
+          .catch((err) => {
+            ctx.logger.error(`Timer "${timer.name}" error: ${err}`)
+          })
+          .finally(() => {
+            this.runningFlags.set(timerKey, false)
+          })
       }, timer.intervalMs)
 
       handles.push(handle)

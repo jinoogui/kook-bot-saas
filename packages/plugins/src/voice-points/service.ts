@@ -132,6 +132,9 @@ export class VoicePointsService {
     this.ctx.logger.info(`[语音积分] 周期结算开始，在线用户数=${allKeys.length}`)
     if (!allKeys.length) return
 
+    const config = await this.getConfig()
+    if (!config.enabled) return
+
     for (const fullKey of allKeys) {
       try {
         // 从完整 key 中提取逻辑部分：找到 vp:join: 的位置
@@ -146,9 +149,6 @@ export class VoicePointsService {
         const joinKey = KEY_JOIN_TIME(userId, guildId, channelId)
         const joinTimeStr = await this.ctx.redis.get(joinKey)
         if (!joinTimeStr) continue
-
-        const config = await this.getConfig()
-        if (!config.enabled) continue
 
         const increment = Math.max(0, Math.floor((now - parseInt(joinTimeStr)) / 1000))
         if (increment < 10) continue // 不足10秒不结算
@@ -169,7 +169,7 @@ export class VoicePointsService {
         await this.db
           .update(pluginVoiceOnlineRecords)
           .set({
-            durationSeconds: newAcc + increment,
+            durationSeconds: newAcc,
             pointsAwarded: daily.pointsEarned,
           })
           .where(

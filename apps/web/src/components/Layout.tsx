@@ -8,6 +8,7 @@ import {
   LogOut,
   Menu,
   X,
+  Shield,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { User } from '../lib/api';
@@ -19,10 +20,10 @@ interface LayoutProps {
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/bot-setup', label: 'Bot\u8BBE\u7F6E', icon: Bot },
-  { to: '/plugins', label: '\u63D2\u4EF6\u5546\u5E97', icon: Store },
-  { to: '/subscriptions', label: '\u6211\u7684\u8BA2\u9605', icon: CreditCard },
-  { to: '/monitoring', label: '\u5B9E\u4F8B\u76D1\u63A7', icon: Activity },
+  { to: '/bot-setup', label: 'Bot设置', icon: Bot },
+  { to: '/plugins', label: '插件商店', icon: Store },
+  { to: '/subscriptions', label: '我的订阅', icon: CreditCard },
+  { to: '/monitoring', label: '实例监控', icon: Activity },
 ];
 
 export default function Layout({ user, onLogout }: LayoutProps) {
@@ -74,6 +75,20 @@ export default function Layout({ user, onLogout }: LayoutProps) {
               {item.label}
             </NavLink>
           ))}
+
+          {user?.role === 'admin' && (
+            <>
+              <div className="my-2 border-t border-gray-200" />
+              <NavLink
+                to="/admin"
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-primary-600 hover:bg-primary-50 transition-colors"
+              >
+                <Shield size={18} />
+                管理后台
+              </NavLink>
+            </>
+          )}
         </nav>
       </aside>
 
@@ -99,7 +114,7 @@ export default function Layout({ user, onLogout }: LayoutProps) {
               className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-600 transition-colors"
             >
               <LogOut size={16} />
-              \u9000\u51FA
+              退出
             </button>
           </div>
         </header>

@@ -1,5 +1,4 @@
 import type { EventHandlerDefinition, KookEvent, PluginContext } from '@kook-saas/shared'
-import { KeywordReplyService } from './service.js'
 
 export function getEventHandlers(): EventHandlerDefinition[] {
   return [
@@ -14,8 +13,8 @@ export function getEventHandlers(): EventHandlerDefinition[] {
         const msgId = event.msg_id
         if (!content || !guildId || !channelId) return false
 
-        const service = new KeywordReplyService(ctx)
-        await service.init()
+        const service = ctx.getPluginService<{ check: (content: string, guildId: string, channelId: string, msgId: string) => Promise<boolean> }>('keyword-reply')
+        if (!service) return false
         return await service.check(content, guildId, channelId, msgId)
       },
     },

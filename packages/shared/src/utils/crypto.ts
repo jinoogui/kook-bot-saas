@@ -64,7 +64,12 @@ export function encryptToken(token: string, secret: string): string {
  * 解密 Bot Token
  */
 export function decryptToken(encrypted: string, secret: string): string {
-  const [ivHex, dataHex] = encrypted.split(':')
+  const sepIndex = encrypted.indexOf(':')
+  if (sepIndex === -1) {
+    throw new Error('Invalid encrypted token format')
+  }
+  const ivHex = encrypted.slice(0, sepIndex)
+  const dataHex = encrypted.slice(sepIndex + 1)
   const iv = Buffer.from(ivHex, 'hex')
   const data = Buffer.from(dataHex, 'hex')
   const key = crypto.scryptSync(secret, 'kook-saas-salt', 32)

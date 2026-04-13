@@ -14,9 +14,9 @@ export function getEventHandlers(): EventHandlerDefinition[] {
         if (!value?.startsWith('role_claim:')) return false
 
         const userId = body.user_id as string
-        const guildId = body.guild_id as string ?? event.extra?.guild_id
-        const channelId = body.target_id as string ?? event.target_id
-        const msgId = body.msg_id as string ?? event.msg_id
+        const guildId = (body.guild_id ?? event.extra?.guild_id) as string
+        const channelId = (body.target_id ?? event.target_id) as string
+        const msgId = (body.msg_id ?? event.msg_id) as string
         if (!userId || !guildId) return false
 
         const service = new RoleClaimService(ctx)

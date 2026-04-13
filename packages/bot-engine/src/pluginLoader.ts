@@ -74,43 +74,37 @@ export class PluginLoader {
    * Throws on circular dependency or missing dependency.
    */
   resolveDependencies(pluginIds: string[]): string[] {
+    // Deduplicate plugin IDs
+    const dedupedIds = [...new Set(pluginIds)]
     // Build adjacency: pluginId -> list of deps within pluginIds
-    const idSet = new Set(pluginIds)
+    const idSet = new Set(dedupedIds)
     const adjMap = new Map<string, string[]>()
 
-    for (const id of pluginIds) {
+    for (const id of dedupedIds) {
       const plugin = this.registry.get(id)
       if (!plugin) {
         throw new Error(`Plugin "${id}" is not registered, cannot resolve dependencies`)
+      }
+      // Validate all dependencies are in the enabled set
+      for (const dep of plugin.dependencies) {
+        if (!idSet.has(dep)) {
+          throw new Error(`Plugin "${id}" depends on "${dep}" which is not enabled`)
+        }
       }
       const deps = plugin.dependencies.filter((d) => idSet.has(d))
       adjMap.set(id, deps)
     }
 
     // Kahn's algorithm for topological sort
-    const inDegree = new Map<string, number>()
-    for (const id of pluginIds) {
-      inDegree.set(id, 0)
-    }
-    for (const [, deps] of adjMap) {
-      for (const dep of deps) {
-        inDegree.set(dep, (inDegree.get(dep) ?? 0) + 1)
-      }
-    }
-
-    // Wait — inDegree counts how many other plugins depend ON this node,
-    // but for topological sort we need the *reverse*: how many deps this node has that must come first.
-    // Let's redo: in topological sort, edges go from dependency -> dependent.
-    // "dep must come before id" means edge dep -> id.
     // inDegree of id = number of deps it has within the set.
 
     const inDeg = new Map<string, number>()
-    for (const id of pluginIds) {
+    for (const id of dedupedIds) {
       inDeg.set(id, adjMap.get(id)!.length)
     }
 
     const queue: string[] = []
-    for (const id of pluginIds) {
+    for (const id of dedupedIds) {
       if (inDeg.get(id) === 0) {
         queue.push(id)
       }
@@ -118,7 +112,7 @@ export class PluginLoader {
 
     // Build reverse adjacency: dep -> list of nodes that depend on dep
     const reverseAdj = new Map<string, string[]>()
-    for (const id of pluginIds) {
+    for (const id of dedupedIds) {
       reverseAdj.set(id, [])
     }
     for (const [id, deps] of adjMap) {
@@ -140,8 +134,8 @@ export class PluginLoader {
       }
     }
 
-    if (sorted.length !== pluginIds.length) {
-      const remaining = pluginIds.filter((id) => !sorted.includes(id))
+    if (sorted.length !== dedupedIds.length) {
+      const remaining = dedupedIds.filter((id) => !sorted.includes(id))
       throw new Error(`Circular dependency detected among plugins: ${remaining.join(', ')}`)
     }
 

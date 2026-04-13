@@ -9,7 +9,27 @@ export function getChinaDate(): string {
 }
 
 export function getChinaTimestamp(): Date {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: TZ }))
+  const now = new Date()
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+  const parts = formatter.formatToParts(now)
+  const get = (type: string) => parts.find(p => p.type === type)?.value ?? '0'
+  return new Date(
+    Number(get('year')),
+    Number(get('month')) - 1,
+    Number(get('day')),
+    Number(get('hour')),
+    Number(get('minute')),
+    Number(get('second')),
+  )
 }
 
 export function getChinaDateFromTimestamp(ts: Date | number): string {
@@ -59,9 +79,9 @@ export function parseTimeString(input: string): Date | null {
   if (time) {
     const [, h, mi] = time
     const today = getChinaDate()
-    const dt = new Date(`${today}T${h.padStart(2, '0')}:${mi}:00+08:00`)
+    let dt = new Date(`${today}T${h.padStart(2, '0')}:${mi}:00+08:00`)
     if (dt.getTime() <= now.getTime()) {
-      dt.setDate(dt.getDate() + 1)
+      dt = new Date(dt.getTime() + 24 * 60 * 60 * 1000)
     }
     return dt
   }

@@ -106,14 +106,38 @@ export class TenantService {
 
   async getAllRunning() {
     return this.db
-      .select()
+      .select({
+        id: tenants.id,
+        userId: tenants.userId,
+        name: tenants.name,
+        verifyToken: tenants.verifyToken,
+        encryptKey: tenants.encryptKey,
+        assignedPort: tenants.assignedPort,
+        status: tenants.status,
+        pid: tenants.pid,
+        lastHeartbeat: tenants.lastHeartbeat,
+        createdAt: tenants.createdAt,
+        updatedAt: tenants.updatedAt,
+      })
       .from(tenants)
       .where(eq(tenants.status, 'running'))
   }
 
   async getAllTenants() {
     return this.db
-      .select()
+      .select({
+        id: tenants.id,
+        userId: tenants.userId,
+        name: tenants.name,
+        verifyToken: tenants.verifyToken,
+        encryptKey: tenants.encryptKey,
+        assignedPort: tenants.assignedPort,
+        status: tenants.status,
+        pid: tenants.pid,
+        lastHeartbeat: tenants.lastHeartbeat,
+        createdAt: tenants.createdAt,
+        updatedAt: tenants.updatedAt,
+      })
       .from(tenants)
   }
 

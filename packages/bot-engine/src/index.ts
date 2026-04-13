@@ -10,6 +10,12 @@ import { BotEngine, type BotEngineConfig } from './engine.js'
 let engine: BotEngine | null = null
 
 async function handleStart(config: BotEngineConfig): Promise<void> {
+  if (engine) {
+    if (process.send) {
+      process.send({ type: 'error', tenantId: config.tenantId, error: 'Engine already running' })
+    }
+    return
+  }
   try {
     engine = new BotEngine(config)
 
@@ -70,10 +76,18 @@ process.on('message', (msg: any) => {
 
   switch (msg.type) {
     case 'start':
-      handleStart(msg.config as BotEngineConfig)
+      handleStart(msg.config as BotEngineConfig).catch((err) => {
+        console.error('[bot-engine] handleStart failed:', err)
+        if (process.send) {
+          process.send({ type: 'error', error: String(err) })
+        }
+      })
       break
     case 'stop':
-      handleStop()
+      handleStop().catch((err) => {
+        console.error('[bot-engine] handleStop failed:', err)
+        process.exit(1)
+      })
       break
     default:
       break

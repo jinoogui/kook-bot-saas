@@ -77,6 +77,9 @@ export class BotEngine {
 
     // 3. Connect to Redis
     this.redis = new Redis(redisUrl)
+    this.redis.on('error', (err) => {
+      this.logger.error(`Redis connection error: ${err}`)
+    })
 
     // 4. Create scoped wrappers
     this.scopedRedis = new ScopedRedisImpl(this.redis, tenantId)
@@ -106,6 +109,7 @@ export class BotEngine {
       })
 
       await this.pluginLoader.loadPlugin(pluginId, ctx)
+      this.sendLog('info', `插件 ${pluginId} 加载完成`)
 
       // Register timers for this plugin
       const entry = this.pluginLoader.getPlugin(pluginId)!
@@ -132,18 +136,25 @@ export class BotEngine {
 
         // Handle encrypted payloads
         if (body?.encrypt && encryptKey) {
-          const decrypted = decryptWebhookBody(body.encrypt, encryptKey)
-          body = JSON.parse(decrypted)
+          try {
+            const decrypted = decryptWebhookBody(body.encrypt, encryptKey)
+            body = JSON.parse(decrypted)
+          } catch (err) {
+            this.logger.error(`Webhook decryption failed: ${err}`)
+            return reply.code(400).send({ error: 'Decryption failed' })
+          }
         }
 
-        // Handle challenge (webhook verification)
-        if (body?.d?.channel_type === 'WEBHOOK_CHALLENGE' || body?.s === 0) {
-          // Type 0 = event, Type 1 = hello, etc.
+        // Reject unencrypted payloads when encryption is configured
+        if (encryptKey && !(request.body as any)?.encrypt) {
+          return reply.code(403).send({ error: 'Encryption required' })
         }
 
         // Verify token if configured
-        if (verifyToken && body?.d?.verify_token && body.d.verify_token !== verifyToken) {
-          return reply.code(403).send({ error: 'Invalid verify token' })
+        if (verifyToken) {
+          if (!body?.d?.verify_token || body.d.verify_token !== verifyToken) {
+            return reply.code(403).send({ error: 'Invalid verify token' })
+          }
         }
 
         // Handle challenge verification
@@ -154,6 +165,16 @@ export class BotEngine {
         const event: KookEvent = body?.d
         if (!event) {
           return reply.code(200).send({ ok: true })
+        }
+
+        // Nonce-based deduplication using msg_id
+        const msgId = event?.msg_id
+        if (msgId && this.redis) {
+          const dedup = await this.redis.set(`dedup:${msgId}`, '1', 'EX', 300, 'NX')
+          if (!dedup) {
+            // Already processed this message
+            return reply.code(200).send({ ok: true })
+          }
         }
 
         // Try command handling first for message events (type 1, 9, 10)
@@ -170,6 +191,7 @@ export class BotEngine {
         return reply.code(200).send({ ok: true })
       } catch (err) {
         this.logger.error(`Webhook processing error: ${err}`)
+        this.sendLog('error', `Webhook 处理出错: ${err}`)
         return reply.code(200).send({ ok: true })
       }
     })
@@ -183,6 +205,13 @@ export class BotEngine {
 
         this.server[method](fullPath, async (req, rep) => {
           try {
+            // Check authentication if route requires it
+            if (route.auth) {
+              const authHeader = req.headers.authorization
+              if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                return rep.code(401).send({ error: 'Authentication required' })
+              }
+            }
             await route.handler(req, rep, ctx)
           } catch (err) {
             this.logger.error(`API route error [${pluginId}] ${route.method} ${route.path}: ${err}`)
@@ -195,6 +224,7 @@ export class BotEngine {
     // 12. Start listening
     await this.server.listen({ port, host: '0.0.0.0' })
     this.logger.info(`Bot engine for tenant ${tenantId} listening on port ${port}`)
+    this.sendLog('info', `Bot 引擎启动成功，端口 ${port}，已加载 ${sortedIds.length} 个插件`, { plugins: sortedIds })
 
     // 13. Start heartbeat
     this.startHeartbeat()
@@ -202,6 +232,7 @@ export class BotEngine {
 
   async stop(): Promise<void> {
     this.logger.info(`Stopping bot engine for tenant ${this.config.tenantId}`)
+    this.sendLog('info', 'Bot 引擎正在停止')
 
     // Stop heartbeat
     if (this.heartbeatInterval) {
@@ -224,18 +255,30 @@ export class BotEngine {
     }
 
     // Close server
-    if (this.server) {
-      await this.server.close()
+    try {
+      if (this.server) {
+        await this.server.close()
+      }
+    } catch (err) {
+      this.logger.error(`Error closing server: ${err}`)
     }
 
     // Close Redis
-    if (this.redis) {
-      this.redis.disconnect()
+    try {
+      if (this.redis) {
+        this.redis.disconnect()
+      }
+    } catch (err) {
+      this.logger.error(`Error disconnecting Redis: ${err}`)
     }
 
     // Close MySQL
-    if (this.mysqlConnection) {
-      await this.mysqlConnection.end()
+    try {
+      if (this.mysqlConnection) {
+        await this.mysqlConnection.end()
+      }
+    } catch (err) {
+      this.logger.error(`Error closing MySQL: ${err}`)
     }
 
     this.logger.info(`Bot engine for tenant ${this.config.tenantId} stopped`)
@@ -251,6 +294,22 @@ export class BotEngine {
         tenantId: this.config.tenantId,
         timestamp: Date.now(),
         status: 'running',
+      })
+    }
+  }
+
+  /**
+   * Send log via IPC to parent process for persistent storage.
+   */
+  sendLog(level: 'info' | 'warn' | 'error', message: string, metadata?: Record<string, unknown>): void {
+    if (process.send) {
+      process.send({
+        type: 'log',
+        tenantId: this.config.tenantId,
+        level,
+        message,
+        metadata,
+        timestamp: Date.now(),
       })
     }
   }

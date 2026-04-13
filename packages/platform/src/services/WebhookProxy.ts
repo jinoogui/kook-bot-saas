@@ -1,4 +1,5 @@
 import http from 'http'
+import { Readable } from 'stream'
 import httpProxy from 'http-proxy'
 import type { InstanceManager } from './InstanceService.js'
 import type { TenantService } from './TenantService.js'
@@ -103,7 +104,6 @@ export class WebhookProxy {
 
 /** 从字符串创建 Readable stream（用于 httpProxy buffer 选项） */
 function createReadableFromString(str: string) {
-  const { Readable } = require('stream')
   const readable = new Readable()
   readable.push(str)
   readable.push(null)

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url'
 import path from 'path'
 import type { TenantService } from './TenantService.js'
 import type { SubscriptionService } from './SubscriptionService.js'
+import type { LogService } from './LogService.js'
 
 export interface InstanceInfo {
   tenantId: string
@@ -40,6 +41,7 @@ export class InstanceManager {
       redisUrl: string
       engineEntryPath: string
     },
+    private logService?: LogService,
   ) {
     this.portStart = config.portStart
     this.portEnd = config.portEnd
@@ -84,6 +86,10 @@ export class InstanceManager {
 
     // 分配端口
     const port = tenant.assignedPort ?? this.allocatePort()
+    // Ensure assigned port is tracked
+    if (tenant.assignedPort) {
+      this.usedPorts.add(tenant.assignedPort)
+    }
 
     // 构建配置
     const instanceConfig: InstanceConfig = {
@@ -130,6 +136,13 @@ export class InstanceManager {
         info.status = 'error'
         this.tenantService.updateStatus(tenantId, 'error').catch(() => {})
         console.error(`[InstanceManager] 实例 ${tenantId} 报错:`, msg.error)
+      } else if (msg.type === 'log' && this.logService) {
+        this.logService.writeLog({
+          tenantId: msg.tenantId || tenantId,
+          level: msg.level || 'info',
+          message: msg.message || '',
+          metadata: msg.metadata,
+        }).catch(() => {})
       }
     })
 
@@ -166,13 +179,15 @@ export class InstanceManager {
     info.status = 'stopping'
 
     return new Promise<void>((resolve) => {
+      let cleaned = false
       const timeout = setTimeout(() => {
-        // 5 秒还没退出，强制 kill
         try { info.process.kill('SIGKILL') } catch {}
         cleanup()
       }, 5000)
 
       const cleanup = () => {
+        if (cleaned) return
+        cleaned = true
         clearTimeout(timeout)
         this.releasePort(info.port)
         this.instances.delete(tenantId)

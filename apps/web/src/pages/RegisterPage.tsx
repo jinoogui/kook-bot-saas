@@ -1,16 +1,10 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { UserPlus } from 'lucide-react';
-import type { User } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 
-interface RegisterPageProps {
-  auth: {
-    isAuthenticated: boolean;
-    register: (email: string, username: string, password: string) => Promise<User>;
-  };
-}
-
-export default function RegisterPage({ auth }: RegisterPageProps) {
+export default function RegisterPage() {
+  const { isAuthenticated, register } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -19,7 +13,7 @@ export default function RegisterPage({ auth }: RegisterPageProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (auth.isAuthenticated) {
+  if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -28,23 +22,23 @@ export default function RegisterPage({ auth }: RegisterPageProps) {
     setError('');
 
     if (password !== confirmPassword) {
-      setError('\u4E24\u6B21\u8F93\u5165\u7684\u5BC6\u7801\u4E0D\u4E00\u81F4');
+      setError('两次输入的密码不一致');
       return;
     }
 
     if (password.length < 6) {
-      setError('\u5BC6\u7801\u81F3\u5C11\u9700\u89816\u4E2A\u5B57\u7B26');
+      setError('密码至少需要6个字符');
       return;
     }
 
     setLoading(true);
     try {
-      await auth.register(email, username, password);
+      await register(email, username, password);
       navigate('/dashboard');
     } catch (err: unknown) {
       const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        '\u6CE8\u518C\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5';
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        '注册失败，请重试';
       setError(msg);
     } finally {
       setLoading(false);
@@ -56,7 +50,7 @@ export default function RegisterPage({ auth }: RegisterPageProps) {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Kook Bot SaaS</h1>
-          <p className="text-gray-500 mt-2">\u521B\u5EFA\u65B0\u8D26\u6237</p>
+          <p className="text-gray-500 mt-2">创建新账户</p>
         </div>
 
         <div className="card">
@@ -66,7 +60,7 @@ export default function RegisterPage({ auth }: RegisterPageProps) {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">\u90AE\u7BB1</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
               <input
                 type="email"
                 className="input-field"
@@ -78,37 +72,37 @@ export default function RegisterPage({ auth }: RegisterPageProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">\u7528\u6237\u540D</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">用户名</label>
               <input
                 type="text"
                 className="input-field"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="\u8F93\u5165\u7528\u6237\u540D"
+                placeholder="输入用户名"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">\u5BC6\u7801</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
               <input
                 type="password"
                 className="input-field"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="\u81F3\u5C116\u4E2A\u5B57\u7B26"
+                placeholder="至少6个字符"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">\u786E\u8BA4\u5BC6\u7801</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">确认密码</label>
               <input
                 type="password"
                 className="input-field"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="\u518D\u6B21\u8F93\u5165\u5BC6\u7801"
+                placeholder="再次输入密码"
                 required
               />
             </div>
@@ -119,14 +113,14 @@ export default function RegisterPage({ auth }: RegisterPageProps) {
               className="btn-primary w-full flex items-center justify-center gap-2"
             >
               <UserPlus size={18} />
-              {loading ? '\u6CE8\u518C\u4E2D...' : '\u6CE8\u518C'}
+              {loading ? '注册中...' : '注册'}
             </button>
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-4">
-            \u5DF2\u6709\u8D26\u6237\uFF1F{' '}
+            已有账户？{' '}
             <Link to="/login" className="text-primary-600 hover:text-primary-700 font-medium">
-              \u767B\u5F55
+              登录
             </Link>
           </p>
         </div>

@@ -94,10 +94,10 @@ export class KookApi implements KookApiClient {
   }
 
   async getGuildMember(guildId: string, userId: string): Promise<any> {
-    const resp = await this.http.get('/guild/user-list', {
-      params: { guild_id: guildId, user_id: userId },
+    const resp = await this.http.get('/user/view', {
+      params: { user_id: userId, guild_id: guildId },
     })
-    return resp.data?.data?.items?.[0]
+    return resp.data?.data
   }
 
   async deleteMessage(msgId: string): Promise<void> {
@@ -109,7 +109,7 @@ export class KookApi implements KookApiClient {
       target_id: userId,
     })
     const chatCode = sessionResp.data?.data?.code
-    if (!chatCode) return
+    if (!chatCode) throw new Error('Failed to create DM session')
     await this.http.post('/direct-message/create', {
       type: 1,
       target_id: userId,
@@ -123,7 +123,7 @@ export class KookApi implements KookApiClient {
       target_id: userId,
     })
     const chatCode = sessionResp.data?.data?.code
-    if (!chatCode) return
+    if (!chatCode) throw new Error('Failed to create DM session')
     await this.http.post('/direct-message/create', {
       type: 10,
       target_id: userId,
@@ -146,6 +146,9 @@ export class KookApi implements KookApiClient {
   async joinVoiceChannel(channelId: string): Promise<any> {
     const resp = await this.http.post('/voice/join', { channel_id: channelId })
     const d = resp.data?.data
+    if (!d) {
+      throw new Error('joinVoiceChannel: empty response from API')
+    }
     return {
       ip: d.ip,
       port: d.port,

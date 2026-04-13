@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import type { SubscriptionService } from '../services/SubscriptionService.js'
 import type { TenantService } from '../services/TenantService.js'
+import type { AuditService } from '../services/AuditService.js'
 
 export function registerSubscriptionRoutes(
   app: FastifyInstance,
   subscriptionService: SubscriptionService,
   tenantService: TenantService,
+  auditService?: AuditService,
 ) {
   // 获取租户的订阅列表
   app.get('/api/tenants/:tenantId/subscriptions', {
@@ -15,7 +17,7 @@ export function registerSubscriptionRoutes(
     const { tenantId } = request.params as any
     const owned = await tenantService.verifyOwnership(tenantId, userId)
     if (!owned) return reply.code(403).send({ error: '无权访问' })
-    const subs = await subscriptionService.getActiveSubscriptions(tenantId)
+    const subs = await subscriptionService.getAllSubscriptions(tenantId)
     return reply.send({ success: true, data: subs })
   })
 
@@ -30,7 +32,14 @@ export function registerSubscriptionRoutes(
       const owned = await tenantService.verifyOwnership(tenantId, userId)
       if (!owned) return reply.code(403).send({ error: '无权操作' })
       if (!pluginId) return reply.code(400).send({ error: '请指定插件' })
-      const result = await subscriptionService.subscribe(tenantId, pluginId, planType)
+      if (planType && !['monthly', 'yearly', 'lifetime'].includes(planType)) {
+        return reply.code(400).send({ error: '无效的订阅类型' })
+      }
+      const result = await subscriptionService.subscribe(tenantId, pluginId, planType, userId)
+      await auditService?.log({
+        userId, action: 'subscription.create', resource: 'subscription',
+        resourceId: `${tenantId}:${pluginId}`, details: { pluginId, planType }, ipAddress: request.ip,
+      })
       return reply.send({ success: true, data: result })
     } catch (err: any) {
       return reply.code(400).send({ error: err.message })
@@ -46,6 +55,10 @@ export function registerSubscriptionRoutes(
     const owned = await tenantService.verifyOwnership(tenantId, userId)
     if (!owned) return reply.code(403).send({ error: '无权操作' })
     await subscriptionService.unsubscribe(tenantId, pluginId)
+    await auditService?.log({
+      userId, action: 'subscription.cancel', resource: 'subscription',
+      resourceId: `${tenantId}:${pluginId}`, details: { pluginId }, ipAddress: request.ip,
+    })
     return reply.send({ success: true, message: '已取消订阅' })
   })
 
@@ -72,6 +85,10 @@ export function registerSubscriptionRoutes(
     const owned = await tenantService.verifyOwnership(tenantId, userId)
     if (!owned) return reply.code(403).send({ error: '无权操作' })
     await subscriptionService.updateConfig(tenantId, pluginId, config)
+    await auditService?.log({
+      userId, action: 'subscription.config_update', resource: 'subscription',
+      resourceId: `${tenantId}:${pluginId}`, details: { pluginId }, ipAddress: request.ip,
+    })
     return reply.send({ success: true, message: '配置已保存' })
   })
 }

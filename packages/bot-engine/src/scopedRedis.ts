@@ -21,7 +21,12 @@ export class ScopedRedisImpl implements IScopedRedis {
 
   async set(key: string, value: string, mode?: string, duration?: number): Promise<string | null> {
     if (mode && duration) {
-      return this.redis.set(this.key(key), value, mode as 'EX' | 'PX', duration)
+      if (mode === 'EX') {
+        return this.redis.set(this.key(key), value, 'EX', duration)
+      }
+      if (mode === 'PX') {
+        return this.redis.set(this.key(key), value, 'PX', duration)
+      }
     }
     return this.redis.set(this.key(key), value)
   }
@@ -74,7 +79,10 @@ export class ScopedRedisImpl implements IScopedRedis {
     return this.redis.hdel(this.key(key), field)
   }
 
+  /** WARNING: KEYS command can be slow on large datasets. Use sparingly. */
   async keys(pattern: string): Promise<string[]> {
-    return this.redis.keys(this.key(pattern))
+    const results = await this.redis.keys(this.key(pattern))
+    // Strip tenant prefix from returned keys
+    return results.map(k => k.slice(this.prefix.length))
   }
 }

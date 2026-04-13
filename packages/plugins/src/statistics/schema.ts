@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, int, timestamp, date, index } from 'drizzle-orm/mysql-core'
+import { mysqlTable, varchar, int, timestamp, date, index, unique } from 'drizzle-orm/mysql-core'
 
 export const pluginStatsActivityStats = mysqlTable('plugin_stats_activity_stats', {
   id:           int('id').primaryKey().autoincrement(),
@@ -32,4 +32,5 @@ export const pluginStatsUserActivity = mysqlTable('plugin_stats_user_activity', 
   lastActiveAt: timestamp('last_active_at').defaultNow(),
 }, (t) => ({
   idxTenantGuild: index('idx_tenant_guild_user').on(t.tenantId, t.guildId, t.userId),
+  uniqUser: unique().on(t.tenantId, t.userId, t.guildId),
 }))

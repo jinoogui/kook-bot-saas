@@ -105,8 +105,7 @@ export class ACAutomaton {
   /** 将文本中的敏感词替换为 * */
   replace(text: string, replacement = '*'): string {
     this.build()
-    const t = this.caseSensitive ? text : text.toLowerCase()
-    const hits = this.search(t)
+    const hits = this.search(text)
     if (!hits.length) return text
 
     const mask = new Array(text.length).fill(false)

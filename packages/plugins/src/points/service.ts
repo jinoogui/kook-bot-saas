@@ -121,15 +121,38 @@ export class PointsService {
     amount: number,
     reason: string = '',
   ): Promise<{ success: boolean; message: string; remaining: number }> {
-    const current = await this.getUserPoints(userId, guildId)
-    if (current < amount) {
+    // Atomic deduction with balance check
+    const result = await this.db
+      .update(pluginPointsUserPoints)
+      .set({ points: sql`points - ${amount}` })
+      .where(and(
+        eq(pluginPointsUserPoints.tenantId, this.tenantId),
+        eq(pluginPointsUserPoints.userId, userId),
+        eq(pluginPointsUserPoints.guildId, guildId),
+        sql`points >= ${amount}`,
+      ))
+
+    if ((result as any)[0]?.affectedRows === 0 || (result as any).affectedRows === 0) {
+      const current = await this.getUserPoints(userId, guildId)
       return {
         success: false,
         message: `积分不足，当前 ${current} 分，需要 ${amount} 分`,
         remaining: current,
       }
     }
-    const remaining = await this.addUserPoints(userId, guildId, -amount, reason)
+
+    if (reason) {
+      await this.db.insert(pluginPointsRewardRecords).values({
+        tenantId: this.tenantId,
+        userId,
+        guildId,
+        rewardType: 'deduct',
+        rewardName: reason,
+        pointsEarned: -amount,
+      })
+    }
+
+    const remaining = await this.getUserPoints(userId, guildId)
     return { success: true, message: '扣除成功', remaining }
   }
 
@@ -187,16 +210,30 @@ export class PointsService {
 
     if (!records.length) return 0
 
-    let streak = 1
     const today = getChinaDate()
+    let streak = 0
+    // Start from today; if today is not checked in, try yesterday
     let expected = today
 
     for (const record of records) {
       if (record.date === expected) {
-        const d = new Date(expected)
-        d.setDate(d.getDate() - 1)
+        streak++
+        const d = new Date(expected + 'T00:00:00+08:00')
+        d.setTime(d.getTime() - 24 * 60 * 60 * 1000)
         expected = d.toISOString().slice(0, 10)
-        if (record.date !== today) streak++
+      } else if (streak === 0 && record.date !== today) {
+        // User hasn't checked in today, try yesterday
+        const yesterday = new Date(today + 'T00:00:00+08:00')
+        yesterday.setTime(yesterday.getTime() - 24 * 60 * 60 * 1000)
+        const yesterdayStr = yesterday.toISOString().slice(0, 10)
+        if (record.date === yesterdayStr) {
+          streak++
+          const d = new Date(yesterdayStr + 'T00:00:00+08:00')
+          d.setTime(d.getTime() - 24 * 60 * 60 * 1000)
+          expected = d.toISOString().slice(0, 10)
+        } else {
+          break
+        }
       } else {
         break
       }
@@ -205,24 +242,14 @@ export class PointsService {
   }
 
   async doCheckin(userId: string, guildId: string): Promise<CheckinResult> {
-    // 1. 检查是否已签到
-    if (await this.checkCheckinToday(userId, guildId)) {
-      const streak = await this.getConsecutiveDays(userId, guildId)
-      const points = await this.getUserPoints(userId, guildId)
-      return { alreadyCheckin: true, streak, currentPoints: points }
-    }
-
-    // 2. 读取配置
+    // Read config first
     const minPts    = await this.getIntConfig('checkin_min_points',     DEFAULTS.checkin_min_points)
     const maxPts    = await this.getIntConfig('checkin_max_points',     DEFAULTS.checkin_max_points)
     const streakOn  = await this.getBoolConfig('checkin_streak_enabled', DEFAULTS.checkin_streak_enabled)
     const streakMin = await this.getIntConfig('checkin_streak_min',     DEFAULTS.checkin_streak_min)
     const streakMax = await this.getIntConfig('checkin_streak_max',     DEFAULTS.checkin_streak_max)
 
-    // 3. 计算基础积分
     const basePoints = minPts + Math.floor(Math.random() * (maxPts - minPts + 1))
-
-    // 4. 计算连签奖励
     const streak = await this.getConsecutiveDays(userId, guildId)
     const newStreak = streak + 1
     let bonusPoints = 0
@@ -235,8 +262,8 @@ export class PointsService {
 
     const today = getChinaDate()
 
-    // 5. 写入签到记录
-    await this.db.insert(pluginPointsCheckinRecords).values({
+    // Atomic insert - use ON DUPLICATE KEY UPDATE to detect duplicate
+    const result = await this.db.insert(pluginPointsCheckinRecords).values({
       tenantId: this.tenantId,
       userId,
       guildId,
@@ -244,9 +271,17 @@ export class PointsService {
       points:       basePoints,
       streakDays:   newStreak,
       bonusPoints,
+    }).onDuplicateKeyUpdate({
+      set: { points: pluginPointsCheckinRecords.points }, // no-op update
     })
 
-    // 6. 发放积分
+    // If no row was actually inserted (duplicate), user already checked in
+    if ((result as any)[0]?.affectedRows === 0 || (result as any).affectedRows === 0) {
+      const points = await this.getUserPoints(userId, guildId)
+      return { alreadyCheckin: true, streak, currentPoints: points }
+    }
+
+    // Award points
     await this.db
       .insert(pluginPointsUserPoints)
       .values({
@@ -263,7 +298,6 @@ export class PointsService {
         },
       })
 
-    // 7. 写入奖励记录
     await this.db.insert(pluginPointsRewardRecords).values({
       tenantId: this.tenantId,
       userId,
@@ -347,12 +381,21 @@ export class PointsService {
     const deduct = await this.deductUserPoints(userId, guildId, item.price, `购买商品: ${item.name}`)
     if (!deduct.success) return { success: false, message: deduct.message }
 
-    // 扣减库存
+    // Atomically decrement stock with condition
     if (item.stock !== null && item.stock !== -1) {
-      await this.db
+      const stockResult = await this.db
         .update(pluginPointsShopItems)
         .set({ stock: sql`stock - 1` })
-        .where(eq(pluginPointsShopItems.id, itemId))
+        .where(and(
+          eq(pluginPointsShopItems.id, itemId),
+          sql`stock > 0`,
+        ))
+      // If no rows affected, stock was already 0
+      if ((stockResult as any)[0]?.affectedRows === 0 || (stockResult as any).affectedRows === 0) {
+        // Refund points
+        await this.addUserPoints(userId, guildId, item.price, `退款: ${item.name} 库存不足`)
+        return { success: false, message: '商品库存不足' }
+      }
     }
 
     // 记录兑换

@@ -10,6 +10,7 @@ export const pluginModerationBans = mysqlTable('plugin_moderation_bans', {
   bannedAt: timestamp('banned_at').defaultNow(),
 }, (t) => ({
   idxTenantGuild: index('idx_tenant_guild').on(t.tenantId, t.guildId),
+  idxTenantUserGuild: index('idx_tenant_user_guild').on(t.tenantId, t.userId, t.guildId),
 }))
 
 export const pluginModerationMutes = mysqlTable('plugin_moderation_mutes', {
@@ -22,6 +23,7 @@ export const pluginModerationMutes = mysqlTable('plugin_moderation_mutes', {
   mutedAt:   timestamp('muted_at').defaultNow(),
 }, (t) => ({
   idxTenantGuild: index('idx_tenant_guild').on(t.tenantId, t.guildId),
+  idxTenantUserGuild: index('idx_tenant_user_guild').on(t.tenantId, t.userId, t.guildId),
 }))
 
 export const pluginModerationAds = mysqlTable('plugin_moderation_ads', {

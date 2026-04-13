@@ -1,4 +1,10 @@
+import dotenv from 'dotenv'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { z } from 'zod'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') })
 
 const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -6,10 +12,15 @@ const configSchema = z.object({
   PLATFORM_MYSQL_URL: z.string().min(1, 'PLATFORM_MYSQL_URL is required'),
   TENANT_MYSQL_URL: z.string().min(1, 'TENANT_MYSQL_URL is required'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  CORS_ORIGIN: z.string().optional().default('http://localhost:5173'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   INSTANCE_PORT_START: z.coerce.number().default(6001),
   INSTANCE_PORT_END: z.coerce.number().default(6999),
   BOT_ENGINE_ENTRY: z.string().optional(),
+  RATE_LIMIT_AUTH: z.coerce.number().default(5),       // 认证接口：5次/分钟
+  RATE_LIMIT_GENERAL: z.coerce.number().default(60),   // 通用接口：60次/分钟
+  RATE_LIMIT_ADMIN: z.coerce.number().default(120),    // 管理接口：120次/分钟
+  RATE_LIMIT_WEBHOOK: z.coerce.number().default(1000), // Webhook：1000次/分钟
 })
 
 export type PlatformConfig = z.infer<typeof configSchema>

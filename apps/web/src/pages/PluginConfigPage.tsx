@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, ToggleLeft, ToggleRight, RefreshCw } from 'lucide-react';
-import api, { type Plugin } from '../lib/api';
+import { ArrowLeft, Save, ToggleLeft, ToggleRight, RefreshCw, Clock } from 'lucide-react';
+import api, { type Plugin, type Subscription } from '../lib/api';
 
 export default function PluginConfigPage() {
   const { id: pluginId } = useParams<{ id: string }>();
@@ -20,24 +20,24 @@ export default function PluginConfigPage() {
 
   const { data: plugin } = useQuery({
     queryKey: ['plugin', pluginId],
-    queryFn: () => api.plugins.get(pluginId!).then((r) => r.data.plugin),
+    queryFn: () => api.plugins.get(pluginId!).then((r) => r.data),
     enabled: !!pluginId && !statePlugin,
     initialData: statePlugin,
   });
 
   const { data: tenants } = useQuery({
     queryKey: ['tenants'],
-    queryFn: () => api.tenants.list().then((r) => r.data.tenants),
+    queryFn: () => api.tenants.list().then((r) => r.data),
   });
 
   const { data: subscriptions } = useQuery({
     queryKey: ['subscriptions', selectedTenant],
     queryFn: () =>
-      api.subscriptions.list(selectedTenant).then((r) => r.data.subscriptions),
+      api.subscriptions.list(selectedTenant).then((r) => r.data),
     enabled: !!selectedTenant,
   });
 
-  const existingSub = subscriptions?.find((s) => s.plugin_id === pluginId);
+  const existingSub = subscriptions?.find((s: Subscription) => s.pluginId === pluginId);
 
   useEffect(() => {
     if (existingSub) {
@@ -48,12 +48,17 @@ export default function PluginConfigPage() {
 
   const subscribeMutation = useMutation({
     mutationFn: () => api.subscriptions.subscribe(selectedTenant, pluginId!, planType),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions', selectedTenant] });
-      setMessage({ type: 'success', text: '\u8BA2\u9605\u6210\u529F' });
-      setTimeout(() => setMessage(null), 3000);
+      const data = res.data as any;
+      if (data?.paymentRequired) {
+        setMessage({ type: 'success', text: '订单已创建，等待管理员确认支付后激活' });
+      } else {
+        setMessage({ type: 'success', text: '订阅成功' });
+      }
+      setTimeout(() => setMessage(null), 5000);
     },
-    onError: () => setMessage({ type: 'error', text: '\u8BA2\u9605\u5931\u8D25' }),
+    onError: () => setMessage({ type: 'error', text: '订阅失败' }),
   });
 
   const toggleMutation = useMutation({
@@ -62,20 +67,20 @@ export default function PluginConfigPage() {
     onSuccess: (_, newEnabled) => {
       setEnabled(newEnabled);
       queryClient.invalidateQueries({ queryKey: ['subscriptions', selectedTenant] });
-      setMessage({ type: 'success', text: newEnabled ? '\u5DF2\u542F\u7528' : '\u5DF2\u7981\u7528' });
+      setMessage({ type: 'success', text: newEnabled ? '已启用' : '已禁用' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '\u64CD\u4F5C\u5931\u8D25' }),
+    onError: () => setMessage({ type: 'error', text: '操作失败' }),
   });
 
   const configMutation = useMutation({
     mutationFn: () => api.subscriptions.updateConfig(selectedTenant, pluginId!, config),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions', selectedTenant] });
-      setMessage({ type: 'success', text: '\u914D\u7F6E\u5DF2\u4FDD\u5B58' });
+      setMessage({ type: 'success', text: '配置已保存' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '\u4FDD\u5B58\u5931\u8D25' }),
+    onError: () => setMessage({ type: 'error', text: '保存失败' }),
   });
 
   const configSchema = plugin?.config_schema || {};
@@ -88,11 +93,11 @@ export default function PluginConfigPage() {
         onClick={() => navigate(-1)}
         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
       >
-        <ArrowLeft size={16} /> \u8FD4\u56DE
+        <ArrowLeft size={16} /> 返回
       </button>
 
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">{plugin?.name || '\u63D2\u4EF6\u914D\u7F6E'}</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{plugin?.name || '插件配置'}</h2>
         <p className="text-gray-500 text-sm mt-1">{plugin?.description}</p>
       </div>
 
@@ -101,13 +106,13 @@ export default function PluginConfigPage() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-sm text-gray-500">\u7248\u672C: v{plugin.version}</span>
+              <span className="text-sm text-gray-500">版本: v{plugin.version}</span>
               {plugin.category && (
-                <span className="ml-3 text-sm text-gray-500">\u5206\u7C7B: {plugin.category}</span>
+                <span className="ml-3 text-sm text-gray-500">分类: {plugin.category}</span>
               )}
             </div>
             <span className="text-sm font-medium">
-              {plugin.price_monthly === 0 ? '\u514D\u8D39' : `\u00A5${plugin.price_monthly}/\u6708`}
+              {!plugin.priceMonthly ? '免费' : `¥${(plugin.priceMonthly / 100).toFixed(0)}/月`}
             </span>
           </div>
         </div>
@@ -115,13 +120,13 @@ export default function PluginConfigPage() {
 
       {/* Tenant selector */}
       <div className="card">
-        <label className="block text-sm font-medium text-gray-700 mb-1">\u9009\u62E9 Bot \u5B9E\u4F8B</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">选择 Bot 实例</label>
         <select
           className="input-field"
           value={selectedTenant}
           onChange={(e) => setSelectedTenant(e.target.value)}
         >
-          <option value="">\u8BF7\u9009\u62E9</option>
+          <option value="">请选择</option>
           {tenants?.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
@@ -144,20 +149,35 @@ export default function PluginConfigPage() {
             </div>
           )}
 
-          {!existingSub ? (
+          {existingSub && existingSub.status === 'pending' ? (
+            /* Pending payment */
+            <div className="card border-amber-200 bg-amber-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 rounded-lg">
+                  <Clock size={20} className="text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-amber-800">等待支付确认</h3>
+                  <p className="text-sm text-amber-600 mt-0.5">
+                    订单已创建，请等待管理员确认支付后自动激活插件
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : !existingSub ? (
             /* Subscribe */
             <div className="card">
-              <h3 className="text-lg font-semibold mb-4">\u8BA2\u9605\u63D2\u4EF6</h3>
+              <h3 className="text-lg font-semibold mb-4">订阅插件</h3>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">\u8BA2\u9605\u65B9\u6848</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">订阅方案</label>
                 <select
                   className="input-field"
                   value={planType}
                   onChange={(e) => setPlanType(e.target.value)}
                 >
-                  <option value="monthly">\u6708\u4ED8</option>
-                  <option value="yearly">\u5E74\u4ED8</option>
-                  <option value="free">\u514D\u8D39</option>
+                  <option value="monthly">月付</option>
+                  <option value="yearly">年付</option>
+                  <option value="free">免费</option>
                 </select>
               </div>
               <button
@@ -165,7 +185,7 @@ export default function PluginConfigPage() {
                 onClick={() => subscribeMutation.mutate()}
                 disabled={subscribeMutation.isPending}
               >
-                {subscribeMutation.isPending ? '\u8BA2\u9605\u4E2D...' : '\u786E\u8BA4\u8BA2\u9605'}
+                {subscribeMutation.isPending ? '订阅中...' : '确认订阅'}
               </button>
             </div>
           ) : (
@@ -174,9 +194,9 @@ export default function PluginConfigPage() {
               <div className="card">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-semibold">\u63D2\u4EF6\u72B6\u6001</h3>
+                    <h3 className="font-semibold">插件状态</h3>
                     <p className="text-sm text-gray-500">
-                      {enabled ? '\u5DF2\u542F\u7528' : '\u5DF2\u7981\u7528'}
+                      {enabled ? '已启用' : '已禁用'}
                     </p>
                   </div>
                   <button
@@ -192,7 +212,7 @@ export default function PluginConfigPage() {
               {/* Config form */}
               {schemaProperties && Object.keys(schemaProperties).length > 0 && (
                 <div className="card">
-                  <h3 className="text-lg font-semibold mb-4">\u63D2\u4EF6\u914D\u7F6E</h3>
+                  <h3 className="text-lg font-semibold mb-4">插件配置</h3>
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -215,7 +235,7 @@ export default function PluginConfigPage() {
                       disabled={configMutation.isPending}
                     >
                       <Save size={16} />
-                      {configMutation.isPending ? '\u4FDD\u5B58\u4E2D...' : '\u4FDD\u5B58\u914D\u7F6E'}
+                      {configMutation.isPending ? '保存中...' : '保存配置'}
                     </button>
                   </form>
                 </div>
@@ -224,7 +244,7 @@ export default function PluginConfigPage() {
               {(!schemaProperties || Object.keys(schemaProperties).length === 0) && (
                 <div className="card text-center py-8 text-gray-500">
                   <RefreshCw className="mx-auto mb-2 text-gray-300" size={24} />
-                  <p>\u6B64\u63D2\u4EF6\u65E0\u989D\u5916\u914D\u7F6E\u9879</p>
+                  <p>此插件无额外配置项</p>
                 </div>
               )}
             </>

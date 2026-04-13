@@ -35,9 +35,9 @@ export class AuthService {
     const userId = (result as any).insertId as number
 
     // 生成 JWT
-    const token = this.app.jwt.sign({ userId, email, username }, { expiresIn: '7d' })
+    const token = this.app.jwt.sign({ userId, email, username, role: 'user' }, { expiresIn: '7d' })
 
-    return { userId, token, username }
+    return { userId, token, username, role: 'user' }
   }
 
   async login(email: string, password: string) {
@@ -61,11 +61,11 @@ export class AuthService {
     }
 
     const token = this.app.jwt.sign(
-      { userId: user.id, email: user.email, username: user.username },
+      { userId: user.id, email: user.email, username: user.username, role: user.role ?? 'user' },
       { expiresIn: '7d' },
     )
 
-    return { userId: user.id, token, username: user.username }
+    return { userId: user.id, token, username: user.username, role: user.role ?? 'user' }
   }
 
   async getUser(userId: number) {
@@ -74,6 +74,7 @@ export class AuthService {
         id: platformUsers.id,
         email: platformUsers.email,
         username: platformUsers.username,
+        role: platformUsers.role,
         status: platformUsers.status,
         createdAt: platformUsers.createdAt,
       })

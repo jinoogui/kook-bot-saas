@@ -1,11 +1,15 @@
 import type { FastifyInstance } from 'fastify'
 import type { InstanceManager } from '../services/InstanceService.js'
 import type { TenantService } from '../services/TenantService.js'
+import type { AuditService } from '../services/AuditService.js'
+import type { LogService } from '../services/LogService.js'
 
 export function registerInstanceRoutes(
   app: FastifyInstance,
   instanceManager: InstanceManager,
   tenantService: TenantService,
+  auditService?: AuditService,
+  logService?: LogService,
 ) {
   // 启动实例
   app.post('/api/instances/:id/start', {
@@ -17,6 +21,10 @@ export function registerInstanceRoutes(
       const owned = await tenantService.verifyOwnership(id, userId)
       if (!owned) return reply.code(403).send({ error: '无权操作' })
       const info = await instanceManager.startInstance(id)
+      await auditService?.log({
+        userId, action: 'instance.start', resource: 'instance',
+        resourceId: id, details: { port: info.port }, ipAddress: request.ip,
+      })
       return reply.send({
         success: true,
         data: { tenantId: info.tenantId, port: info.port, status: info.status },
@@ -36,6 +44,10 @@ export function registerInstanceRoutes(
       const owned = await tenantService.verifyOwnership(id, userId)
       if (!owned) return reply.code(403).send({ error: '无权操作' })
       await instanceManager.stopInstance(id)
+      await auditService?.log({
+        userId, action: 'instance.stop', resource: 'instance',
+        resourceId: id, details: {}, ipAddress: request.ip,
+      })
       return reply.send({ success: true, message: '实例已停止' })
     } catch (err: any) {
       return reply.code(400).send({ error: err.message })
@@ -52,6 +64,10 @@ export function registerInstanceRoutes(
       const owned = await tenantService.verifyOwnership(id, userId)
       if (!owned) return reply.code(403).send({ error: '无权操作' })
       const info = await instanceManager.restartInstance(id)
+      await auditService?.log({
+        userId, action: 'instance.restart', resource: 'instance',
+        resourceId: id, details: { port: info.port }, ipAddress: request.ip,
+      })
       return reply.send({
         success: true,
         data: { tenantId: info.tenantId, port: info.port, status: info.status },
@@ -90,5 +106,28 @@ export function registerInstanceRoutes(
         pid: info.process.pid,
       },
     })
+  })
+
+  // 获取实例日志
+  app.get('/api/instances/:id/logs', {
+    preHandler: [app.authenticate],
+  }, async (request, reply) => {
+    if (!logService) {
+      return reply.send({ success: true, data: { rows: [], total: 0, page: 1, size: 50 } })
+    }
+    const { userId } = request.user as any
+    const { id } = request.params as any
+    const owned = await tenantService.verifyOwnership(id, userId)
+    if (!owned) return reply.code(403).send({ error: '无权操作' })
+
+    const { level, search, page = '1', size = '50' } = request.query as any
+    const result = await logService.queryLogs({
+      tenantId: id,
+      level: level || undefined,
+      search: search || undefined,
+      page: parseInt(page, 10) || 1,
+      size: parseInt(size, 10) || 50,
+    })
+    return reply.send({ success: true, data: result })
   })
 }

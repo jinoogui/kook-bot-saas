@@ -1,6 +1,6 @@
 import { eq, and, sql } from 'drizzle-orm'
 import type { PluginContext } from '@kook-saas/shared'
-import { ACAutomaton } from '@kook-saas/shared'
+import { ACAutomaton, getChinaDate } from '@kook-saas/shared'
 import { pluginFilterAds, pluginFilterViolationRecords } from './schema.js'
 
 // ── 内置广告关键词 ────────────────────────────────
@@ -17,7 +17,7 @@ const BUILTIN_AD_KEYWORDS = [
 ]
 
 // URL 正则
-const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*)/gi
+const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*)/i
 
 // 重复字符正则（4个以上相同字符）
 const REPEAT_REGEX = /(.)(\1{4,})/
@@ -132,10 +132,8 @@ export class FilterService {
 
     // 3. URL 检测
     if (urlCheckEnabled && URL_REGEX.test(content)) {
-      URL_REGEX.lastIndex = 0
       return { isViolation: true, type: 'url', reason: '包含链接' }
     }
-    URL_REGEX.lastIndex = 0
 
     // 4. 重复字符检测
     if (violationDetectionEnabled && REPEAT_REGEX.test(content)) {
@@ -163,7 +161,7 @@ export class FilterService {
     })
 
     // 查询该用户本日违规次数
-    const today = new Date().toISOString().slice(0, 10)
+    const today = getChinaDate()
     const [row] = await this.db
       .select({ count: sql<number>`count(*)` })
       .from(pluginFilterViolationRecords)
@@ -205,6 +203,21 @@ export class FilterService {
     // 重新构建该 guild 的 AC 自动机
     this.guildAC.delete(guildId)
     await this.getGuildAC(guildId)
+
+    // Rebuild global AC from scratch
+    this.globalAC = new ACAutomaton()
+    this.globalAC.addKeywords(BUILTIN_AD_KEYWORDS)
+    const allAds = await this.db
+      .select({ keyword: pluginFilterAds.keyword })
+      .from(pluginFilterAds)
+      .where(and(
+        eq(pluginFilterAds.tenantId, this.tenantId),
+        eq(pluginFilterAds.enabled, 1),
+      ))
+    for (const row of allAds) {
+      this.globalAC.addKeyword(row.keyword)
+    }
+    this.globalAC.build()
   }
 
   // ── 统计信息 ────────────────────────────────────
