@@ -10,10 +10,10 @@ export default function AdminPluginsPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin-plugins'],
-    queryFn: () => api.admin.getPlugins(),
+    queryFn: () => api.admin.getPlugins().then((r) => r.data),
   });
 
-  const rows = (data?.data as any[]) ?? [];
+  const rows = (data as any[]) ?? [];
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...body }: { id: string; [key: string]: any }) =>

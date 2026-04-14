@@ -5,10 +5,10 @@ import api from '../../lib/api';
 export default function AdminDashboard() {
   const { data: stats, isLoading, error } = useQuery({
     queryKey: ['admin-stats'],
-    queryFn: () => api.admin.getStats(),
+    queryFn: () => api.admin.getStats().then((r) => r.data),
   });
 
-  const s = (stats?.data as any) ?? {};
+  const s = (stats as any) ?? {};
 
   return (
     <div className="space-y-6">

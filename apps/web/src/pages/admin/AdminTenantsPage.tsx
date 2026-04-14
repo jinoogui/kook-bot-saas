@@ -9,10 +9,10 @@ export default function AdminTenantsPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin-tenants'],
-    queryFn: () => api.admin.getTenants(),
+    queryFn: () => api.admin.getTenants().then((r) => r.data),
   });
 
-  const rows = (data?.data as any[]) ?? [];
+  const rows = ((data as any)?.rows as any[]) ?? [];
 
   const stopMut = useMutation({
     mutationFn: (id: string) => api.admin.stopTenant(id),

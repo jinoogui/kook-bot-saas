@@ -9,10 +9,10 @@ export default function AdminUsersPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin-users', page],
-    queryFn: () => api.admin.getUsers(page),
+    queryFn: () => api.admin.getUsers(page).then((r) => r.data),
   });
 
-  const d = (data?.data as any) ?? { rows: [], total: 0 };
+  const d = (data as any) ?? { rows: [], total: 0 };
   const totalPages = Math.ceil(d.total / 20);
 
   const updateMut = useMutation({

@@ -11,16 +11,16 @@ export default function AdminSubscriptionsPage() {
 
   const { data: subsData, isLoading: subsLoading, error: subsError } = useQuery({
     queryKey: ['admin-subscriptions'],
-    queryFn: () => api.admin.getSubscriptions(),
+    queryFn: () => api.admin.getSubscriptions().then((r) => r.data),
   });
 
   const { data: payData, isLoading: payLoading, error: payError } = useQuery({
     queryKey: ['admin-payments'],
-    queryFn: () => api.admin.getPayments(),
+    queryFn: () => api.admin.getPayments().then((r) => r.data),
   });
 
-  const subs = (subsData?.data as any[]) ?? [];
-  const pays = (payData?.data as any[]) ?? [];
+  const subs = ((subsData as any)?.rows as any[]) ?? [];
+  const pays = ((payData as any)?.rows as any[]) ?? [];
 
   const confirmMutation = useMutation({
     mutationFn: (id: number) => api.admin.confirmPayment(id),

@@ -38,11 +38,11 @@ export default function AdminAuditLogsPage() {
         endDate: endDate || undefined,
         page,
         size: 20,
-      }),
+      }).then((r) => r.data),
   });
 
-  const rows = (data?.data as any)?.rows ?? [];
-  const total = (data?.data as any)?.total ?? 0;
+  const rows = (data as any)?.rows ?? [];
+  const total = (data as any)?.total ?? 0;
   const totalPages = Math.ceil(total / 20);
 
   const parseDetails = (details: string | null | undefined) => {
