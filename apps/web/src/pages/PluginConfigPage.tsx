@@ -83,7 +83,8 @@ export default function PluginConfigPage() {
     onError: () => setMessage({ type: 'error', text: '保存失败' }),
   });
 
-  const configSchema = plugin?.config_schema || {};
+  const rawSchema = (plugin as any)?.config_schema || (plugin as any)?.configSchema;
+  const configSchema = typeof rawSchema === 'string' ? (() => { try { return JSON.parse(rawSchema); } catch { return {}; } })() : (rawSchema || {});
   const schemaProperties = (configSchema as { properties?: Record<string, ConfigField> })
     .properties;
 

@@ -194,4 +194,5 @@ export interface PluginMetadata {
   tier: 'free' | 'paid'
   priceMonthly?: number
   priceYearly?: number
+  configSchema?: Record<string, unknown>
 }

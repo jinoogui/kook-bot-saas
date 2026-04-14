@@ -50,6 +50,7 @@ export class PluginCatalogService {
           priceYearly: plugin.priceYearly ?? 0,
           dependencies: JSON.stringify(plugin.dependencies),
           version: plugin.version,
+          configSchema: plugin.configSchema ? JSON.stringify(plugin.configSchema) : null,
         })
         .onDuplicateKeyUpdate({
           set: {
@@ -61,6 +62,7 @@ export class PluginCatalogService {
             priceYearly: plugin.priceYearly ?? 0,
             dependencies: JSON.stringify(plugin.dependencies),
             version: plugin.version,
+            configSchema: plugin.configSchema ? JSON.stringify(plugin.configSchema) : null,
           },
         })
     }

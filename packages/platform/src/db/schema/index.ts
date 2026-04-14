@@ -50,6 +50,7 @@ export const pluginCatalog = mysqlTable('plugin_catalog', {
   priceYearly: int('price_yearly').default(0),
   dependencies: text('dependencies'), // JSON array of plugin IDs
   version: varchar('version', { length: 32 }).notNull().default('1.0.0'),
+  configSchema: text('config_schema'), // JSON Schema for plugin configuration
   enabled: int('enabled').default(1), // int used as boolean (0/1) for MySQL compatibility
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
