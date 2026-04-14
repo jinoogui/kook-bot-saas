@@ -23,11 +23,11 @@ export function registerInstanceRoutes(
       const info = await instanceManager.startInstance(id)
       await auditService?.log({
         userId, action: 'instance.start', resource: 'instance',
-        resourceId: id, details: { port: info.port }, ipAddress: request.ip,
+        resourceId: id, details: {}, ipAddress: request.ip,
       })
       return reply.send({
         success: true,
-        data: { tenantId: info.tenantId, port: info.port, status: info.status },
+        data: { tenantId: info.tenantId, status: info.status },
       })
     } catch (err: any) {
       return reply.code(400).send({ error: err.message })
@@ -66,11 +66,11 @@ export function registerInstanceRoutes(
       const info = await instanceManager.restartInstance(id)
       await auditService?.log({
         userId, action: 'instance.restart', resource: 'instance',
-        resourceId: id, details: { port: info.port }, ipAddress: request.ip,
+        resourceId: id, details: {}, ipAddress: request.ip,
       })
       return reply.send({
         success: true,
-        data: { tenantId: info.tenantId, port: info.port, status: info.status },
+        data: { tenantId: info.tenantId, status: info.status },
       })
     } catch (err: any) {
       return reply.code(400).send({ error: err.message })
@@ -91,7 +91,7 @@ export function registerInstanceRoutes(
       const tenant = await tenantService.getById(id)
       return reply.send({
         success: true,
-        data: { tenantId: id, status: tenant?.status ?? 'stopped', port: null },
+        data: { tenantId: id, status: tenant?.status ?? 'stopped' },
       })
     }
 
@@ -100,7 +100,6 @@ export function registerInstanceRoutes(
       data: {
         tenantId: info.tenantId,
         status: info.status,
-        port: info.port,
         lastHeartbeat: info.lastHeartbeat,
         restartCount: info.restartCount,
         pid: info.process.pid,

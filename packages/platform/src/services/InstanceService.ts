@@ -8,7 +8,6 @@ import type { LogService } from './LogService.js'
 export interface InstanceInfo {
   tenantId: string
   process: ChildProcess
-  port: number
   status: 'starting' | 'running' | 'stopping' | 'error'
   lastHeartbeat: number
   restartCount: number
@@ -17,9 +16,6 @@ export interface InstanceInfo {
 export interface InstanceConfig {
   tenantId: string
   botToken: string
-  verifyToken?: string
-  encryptKey?: string
-  port: number
   enabledPlugins: string[]
   mysqlUrl: string
   redisUrl: string
@@ -27,40 +23,17 @@ export interface InstanceConfig {
 
 export class InstanceManager {
   private instances = new Map<string, InstanceInfo>()
-  private portStart: number
-  private portEnd: number
-  private usedPorts = new Set<number>()
 
   constructor(
     private tenantService: TenantService,
     private subscriptionService: SubscriptionService,
     private config: {
-      portStart: number
-      portEnd: number
       mysqlUrl: string
       redisUrl: string
       engineEntryPath: string
     },
     private logService?: LogService,
-  ) {
-    this.portStart = config.portStart
-    this.portEnd = config.portEnd
-  }
-
-  /** 分配一个可用端口 */
-  private allocatePort(): number {
-    for (let port = this.portStart; port <= this.portEnd; port++) {
-      if (!this.usedPorts.has(port)) {
-        this.usedPorts.add(port)
-        return port
-      }
-    }
-    throw new Error('没有可用端口，请扩大端口范围')
-  }
-
-  private releasePort(port: number) {
-    this.usedPorts.delete(port)
-  }
+  ) {}
 
   /** 启动 Bot 实例 */
   async startInstance(tenantId: string): Promise<InstanceInfo> {
@@ -84,20 +57,10 @@ export class InstanceManager {
     // 获取已启用的插件
     const enabledPlugins = await this.subscriptionService.getEnabledPluginIds(tenantId)
 
-    // 分配端口
-    const port = tenant.assignedPort ?? this.allocatePort()
-    // Ensure assigned port is tracked
-    if (tenant.assignedPort) {
-      this.usedPorts.add(tenant.assignedPort)
-    }
-
     // 构建配置
     const instanceConfig: InstanceConfig = {
       tenantId,
       botToken,
-      verifyToken: tenant.verifyToken ?? undefined,
-      encryptKey: tenant.encryptKey ?? undefined,
-      port,
       enabledPlugins,
       mysqlUrl: this.config.mysqlUrl,
       redisUrl: this.config.redisUrl,
@@ -112,7 +75,6 @@ export class InstanceManager {
     const info: InstanceInfo = {
       tenantId,
       process: child,
-      port,
       status: 'starting',
       lastHeartbeat: Date.now(),
       restartCount: 0,
@@ -130,8 +92,8 @@ export class InstanceManager {
         this.tenantService.updateHeartbeat(tenantId).catch(() => {})
       } else if (msg.type === 'status' && msg.status === 'running') {
         info.status = 'running'
-        this.tenantService.updateStatus(tenantId, 'running', child.pid, port).catch(() => {})
-        console.info(`[InstanceManager] 实例 ${tenantId} 启动成功，端口 ${port}`)
+        this.tenantService.updateStatus(tenantId, 'running', child.pid).catch(() => {})
+        console.info(`[InstanceManager] 实例 ${tenantId} 启动成功 (WebSocket)`)
       } else if (msg.type === 'error') {
         info.status = 'error'
         this.tenantService.updateStatus(tenantId, 'error').catch(() => {})
@@ -150,7 +112,6 @@ export class InstanceManager {
     child.on('exit', (code, signal) => {
       console.warn(`[InstanceManager] 实例 ${tenantId} 退出, code=${code}, signal=${signal}`)
       info.status = 'error'
-      this.releasePort(port)
       this.instances.delete(tenantId)
       this.tenantService.updateStatus(tenantId, 'stopped', null, null).catch(() => {})
     })
@@ -166,7 +127,7 @@ export class InstanceManager {
     })
 
     // 更新 DB 状态
-    await this.tenantService.updateStatus(tenantId, 'starting', child.pid, port)
+    await this.tenantService.updateStatus(tenantId, 'starting', child.pid)
 
     return info
   }
@@ -189,7 +150,6 @@ export class InstanceManager {
         if (cleaned) return
         cleaned = true
         clearTimeout(timeout)
-        this.releasePort(info.port)
         this.instances.delete(tenantId)
         this.tenantService.updateStatus(tenantId, 'stopped', null, null).catch(() => {})
         resolve()

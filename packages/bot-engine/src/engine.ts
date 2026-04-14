@@ -1,6 +1,3 @@
-import Fastify, { type FastifyInstance } from 'fastify'
-import formbody from '@fastify/formbody'
-import cors from '@fastify/cors'
 import { drizzle } from 'drizzle-orm/mysql2'
 import mysql from 'mysql2/promise'
 import Redis from 'ioredis'
@@ -11,9 +8,9 @@ import type {
   KookMessageEvent,
   IPlugin,
 } from '@kook-saas/shared'
-import { decryptWebhookBody } from '@kook-saas/shared'
 
 import { KookApi } from './kookApi.js'
+import { KookGateway } from './kookGateway.js'
 import { ScopedRedisImpl } from './scopedRedis.js'
 import { TenantDBImpl } from './db.js'
 import { createPluginContext } from './pluginContext.js'
@@ -25,9 +22,7 @@ import { TimerManager } from './timerManager.js'
 export interface BotEngineConfig {
   tenantId: string
   botToken: string
-  verifyToken?: string
-  encryptKey?: string
-  port: number
+  port?: number
   enabledPlugins: string[]
   mysqlUrl: string
   redisUrl: string
@@ -38,6 +33,7 @@ export class BotEngine {
   private readonly logger = pino({ name: 'bot-engine' })
 
   private kookApi!: KookApi
+  private gateway!: KookGateway
   private db!: TenantDBImpl
   private redis!: Redis
   private scopedRedis!: ScopedRedisImpl
@@ -45,7 +41,6 @@ export class BotEngine {
   private dispatcher = new Dispatcher()
   private commandRouter = new CommandRouter()
   private timerManager = new TimerManager()
-  private server!: FastifyInstance
   private mysqlConnection!: mysql.Pool
   private heartbeatInterval: NodeJS.Timeout | null = null
 
@@ -56,17 +51,14 @@ export class BotEngine {
     this.config = config
   }
 
-  /**
-   * Register a plugin instance before start() is called.
-   */
   registerPlugin(plugin: IPlugin): void {
     this.availablePlugins.push(plugin)
   }
 
   async start(): Promise<void> {
-    const { tenantId, botToken, port, mysqlUrl, redisUrl, enabledPlugins, encryptKey, verifyToken } = this.config
+    const { tenantId, botToken, mysqlUrl, redisUrl, enabledPlugins } = this.config
 
-    this.logger.info(`Starting bot engine for tenant ${tenantId} on port ${port}`)
+    this.logger.info(`Starting bot engine for tenant ${tenantId} (WebSocket mode)`)
 
     // 1. Create Kook API client
     this.kookApi = new KookApi(botToken)
@@ -124,110 +116,49 @@ export class BotEngine {
     this.dispatcher.collectHandlers(loadedPlugins)
     this.commandRouter.collectCommands(loadedPlugins)
 
-    // 9. Create Fastify server
-    this.server = Fastify({ logger: false })
-    await this.server.register(cors)
-    await this.server.register(formbody)
-
-    // 10. Webhook endpoint
-    this.server.post('/khl-wh', async (request, reply) => {
-      try {
-        let body = request.body as any
-
-        // Handle encrypted payloads
-        if (body?.encrypt && encryptKey) {
-          try {
-            const decrypted = decryptWebhookBody(body.encrypt, encryptKey)
-            body = JSON.parse(decrypted)
-          } catch (err) {
-            this.logger.error(`Webhook decryption failed: ${err}`)
-            return reply.code(400).send({ error: 'Decryption failed' })
-          }
-        }
-
-        // Reject unencrypted payloads when encryption is configured
-        if (encryptKey && !(request.body as any)?.encrypt) {
-          return reply.code(403).send({ error: 'Encryption required' })
-        }
-
-        // Verify token if configured
-        if (verifyToken) {
-          if (!body?.d?.verify_token || body.d.verify_token !== verifyToken) {
-            return reply.code(403).send({ error: 'Invalid verify token' })
-          }
-        }
-
-        // Handle challenge verification
-        if (body?.d?.type === 255 && body?.d?.channel_type === 'WEBHOOK_CHALLENGE') {
-          return reply.send({ challenge: body.d.challenge })
-        }
-
-        const event: KookEvent = body?.d
-        if (!event) {
-          return reply.code(200).send({ ok: true })
-        }
-
-        // Nonce-based deduplication using msg_id
-        const msgId = event?.msg_id
-        if (msgId && this.redis) {
-          const dedup = await this.redis.set(`dedup:${msgId}`, '1', 'EX', 300, 'NX')
-          if (!dedup) {
-            // Already processed this message
-            return reply.code(200).send({ ok: true })
-          }
-        }
-
-        // Try command handling first for message events (type 1, 9, 10)
-        if (event.type === 1 || event.type === 9 || event.type === 10) {
-          const handled = await this.commandRouter.handleCommand(event as KookMessageEvent)
-          if (handled) {
-            return reply.code(200).send({ ok: true })
-          }
-        }
-
-        // Dispatch to event handlers
-        await this.dispatcher.dispatch(event)
-
-        return reply.code(200).send({ ok: true })
-      } catch (err) {
-        this.logger.error(`Webhook processing error: ${err}`)
-        this.sendLog('error', `Webhook 处理出错: ${err}`)
-        return reply.code(200).send({ ok: true })
-      }
+    // 9. Connect to Kook Gateway via WebSocket
+    this.gateway = new KookGateway({
+      botToken,
+      onEvent: (event) => this.handleGatewayEvent(event),
+      onConnected: () => {
+        this.sendLog('info', 'WebSocket 状态: connected')
+      },
+      onDisconnected: () => {
+        this.sendLog('warn', 'WebSocket 状态: disconnected')
+      },
+      logger: this.logger,
     })
 
-    // 11. Register plugin API routes
-    for (const [pluginId, { plugin, ctx }] of loadedPlugins) {
-      const routes = plugin.getApiRoutes()
-      for (const route of routes) {
-        const fullPath = `/api/plugins/${pluginId}${route.path}`
-        const method = route.method.toLowerCase() as 'get' | 'post' | 'put' | 'delete' | 'patch'
+    await this.gateway.connect()
+    this.logger.info(`Bot engine for tenant ${tenantId} connected via WebSocket`)
+    this.sendLog('info', `Bot 引擎启动成功 (WebSocket)，已加载 ${sortedIds.length} 个插件`, { plugins: sortedIds })
 
-        this.server[method](fullPath, async (req, rep) => {
-          try {
-            // Check authentication if route requires it
-            if (route.auth) {
-              const authHeader = req.headers.authorization
-              if (!authHeader || !authHeader.startsWith('Bearer ')) {
-                return rep.code(401).send({ error: 'Authentication required' })
-              }
-            }
-            await route.handler(req, rep, ctx)
-          } catch (err) {
-            this.logger.error(`API route error [${pluginId}] ${route.method} ${route.path}: ${err}`)
-            rep.code(500).send({ error: 'Internal server error' })
-          }
-        })
-      }
-    }
-
-    // 12. Start listening
-    await this.server.listen({ port, host: '0.0.0.0' })
-    this.logger.info(`Bot engine for tenant ${tenantId} listening on port ${port}`)
-    this.sendLog('info', `Bot 引擎启动成功，端口 ${port}，已加载 ${sortedIds.length} 个插件`, { plugins: sortedIds })
-
-    // 13. Start heartbeat
+    // 10. Start heartbeat
     this.startHeartbeat()
+  }
+
+  /** Handle events received from the Kook WebSocket gateway */
+  private async handleGatewayEvent(event: KookEvent): Promise<void> {
+    try {
+      // Nonce-based deduplication using msg_id
+      const msgId = event?.msg_id
+      if (msgId && this.redis) {
+        const dedup = await this.redis.set(`dedup:${msgId}`, '1', 'EX', 300, 'NX')
+        if (!dedup) return // Already processed
+      }
+
+      // Try command handling first for message events (type 1, 9, 10)
+      if (event.type === 1 || event.type === 9 || event.type === 10) {
+        const handled = await this.commandRouter.handleCommand(event as KookMessageEvent)
+        if (handled) return
+      }
+
+      // Dispatch to event handlers
+      await this.dispatcher.dispatch(event)
+    } catch (err) {
+      this.logger.error(`Event processing error: ${err}`)
+      this.sendLog('error', `事件处理出错: ${err}`)
+    }
   }
 
   async stop(): Promise<void> {
@@ -254,13 +185,13 @@ export class BotEngine {
       }
     }
 
-    // Close server
+    // Disconnect gateway
     try {
-      if (this.server) {
-        await this.server.close()
+      if (this.gateway) {
+        this.gateway.disconnect()
       }
     } catch (err) {
-      this.logger.error(`Error closing server: ${err}`)
+      this.logger.error(`Error disconnecting gateway: ${err}`)
     }
 
     // Close Redis
@@ -284,9 +215,6 @@ export class BotEngine {
     this.logger.info(`Bot engine for tenant ${this.config.tenantId} stopped`)
   }
 
-  /**
-   * Send heartbeat via IPC to parent process.
-   */
   sendHeartbeat(): void {
     if (process.send) {
       process.send({
@@ -298,9 +226,6 @@ export class BotEngine {
     }
   }
 
-  /**
-   * Send log via IPC to parent process for persistent storage.
-   */
   sendLog(level: 'info' | 'warn' | 'error', message: string, metadata?: Record<string, unknown>): void {
     if (process.send) {
       process.send({
@@ -315,9 +240,7 @@ export class BotEngine {
   }
 
   private startHeartbeat(): void {
-    // Send immediately
     this.sendHeartbeat()
-    // Then every 30 seconds
     this.heartbeatInterval = setInterval(() => {
       this.sendHeartbeat()
     }, 30_000)

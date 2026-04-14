@@ -46,7 +46,6 @@ async function handleStart(config: BotEngineConfig): Promise<void> {
         type: 'status',
         tenantId: config.tenantId,
         status: 'running',
-        port: config.port,
       })
     }
   } catch (err) {
@@ -139,6 +138,7 @@ process.on('unhandledRejection', (reason) => {
 export { BotEngine } from './engine.js'
 export type { BotEngineConfig } from './engine.js'
 export { KookApi } from './kookApi.js'
+export { KookGateway } from './kookGateway.js'
 export { ScopedRedisImpl } from './scopedRedis.js'
 export { TenantDBImpl } from './db.js'
 export { createPluginContext } from './pluginContext.js'

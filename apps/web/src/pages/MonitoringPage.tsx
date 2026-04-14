@@ -7,7 +7,6 @@ import {
   Wifi,
   RefreshCw,
   Server,
-  Hash,
   AlertTriangle,
   CheckCircle,
   XCircle,
@@ -171,16 +170,11 @@ export default function MonitoringPage() {
       {selectedTenant && status && (
         <>
           {/* Stats grid */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={statusIcon(status.status)}
               label="运行状态"
               value={statusLabel(status.status)}
-            />
-            <StatCard
-              icon={<Hash className="text-blue-500" size={20} />}
-              label="端口"
-              value={status.port != null ? String(status.port) : '--'}
             />
             <StatCard
               icon={<Clock className="text-purple-500" size={20} />}

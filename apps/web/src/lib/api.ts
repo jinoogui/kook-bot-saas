@@ -84,7 +84,6 @@ export interface Subscription {
 export interface InstanceStatus {
   tenantId: string;
   status: 'running' | 'stopped' | 'error';
-  port: number | null;
   uptime: number | null;
   lastHeartbeat: string | null;
   restartCount: number;

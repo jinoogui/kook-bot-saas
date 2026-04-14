@@ -12,8 +12,6 @@ export default function BotSetupPage() {
   const [selectedTenant, setSelectedTenant] = useState<string>(tenantId || '');
   const [name, setName] = useState('');
   const [botToken, setBotToken] = useState('');
-  const [verifyToken, setVerifyToken] = useState('');
-  const [encryptKey, setEncryptKey] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [initialized, setInitialized] = useState(false);
 
@@ -31,8 +29,6 @@ export default function BotSetupPage() {
   useEffect(() => {
     if (tenant && !initialized) {
       setName(tenant.name || '');
-      setVerifyToken(tenant.verifyToken || '');
-      setEncryptKey(tenant.encryptKey || '');
       // Don't overwrite bot token from API response (it's not returned for security)
       setInitialized(true);
     }
@@ -93,8 +89,6 @@ export default function BotSetupPage() {
     updateMutation.mutate({
       name,
       botToken,
-      verifyToken: verifyToken || undefined,
-      encryptKey: encryptKey || undefined,
     });
   };
 
@@ -219,32 +213,6 @@ export default function BotSetupPage() {
                   value={botToken}
                   onChange={(e) => setBotToken(e.target.value)}
                   required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Verify Token <span className="text-gray-400">(可选)</span>
-                </label>
-                <input
-                  className="input-field font-mono text-sm"
-                  type="password"
-                  value={verifyToken}
-                  onChange={(e) => setVerifyToken(e.target.value)}
-                  placeholder="用于 Webhook 验证"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Encrypt Key <span className="text-gray-400">(可选)</span>
-                </label>
-                <input
-                  className="input-field font-mono text-sm"
-                  type="password"
-                  value={encryptKey}
-                  onChange={(e) => setEncryptKey(e.target.value)}
-                  placeholder="用于消息加密"
                 />
               </div>
 

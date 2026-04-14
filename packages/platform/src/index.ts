@@ -7,7 +7,6 @@ import { SubscriptionService } from './services/SubscriptionService.js'
 import { PluginCatalogService } from './services/PluginCatalogService.js'
 import { InstanceManager } from './services/InstanceService.js'
 import { HealthMonitor } from './services/HealthMonitor.js'
-import { WebhookProxy } from './services/WebhookProxy.js'
 import { AuditService } from './services/AuditService.js'
 import { LogService } from './services/LogService.js'
 import { registerAuthRoutes } from './routes/auth.js'
@@ -147,8 +146,6 @@ async function main() {
     tenantService,
     subscriptionService,
     {
-      portStart: config.INSTANCE_PORT_START,
-      portEnd: config.INSTANCE_PORT_END,
       mysqlUrl: config.TENANT_MYSQL_URL,
       redisUrl: config.REDIS_URL,
       engineEntryPath: engineEntry,
@@ -157,7 +154,6 @@ async function main() {
   )
 
   const healthMonitor = new HealthMonitor(instanceManager, tenantService)
-  const webhookProxy = new WebhookProxy(instanceManager, tenantService)
 
   // 5. 注册路由
   registerAuthRoutes(app, authService, config.RATE_LIMIT_AUTH)
@@ -166,18 +162,6 @@ async function main() {
   registerPluginRoutes(app, catalogService)
   registerSubscriptionRoutes(app, subscriptionService, tenantService, auditService)
   registerAdminRoutes(app, { db, instanceManager, tenantService, auditService, subscriptionService })
-
-  // Webhook 代理路由（高频率限制）
-  const webhookRateLimit = {
-    config: {
-      rateLimit: {
-        max: config.RATE_LIMIT_WEBHOOK,
-        timeWindow: '1 minute',
-      },
-    },
-  }
-  app.post('/khl-wh', webhookRateLimit, webhookProxy.createHandler())
-  app.post('/api/webhook', webhookRateLimit, webhookProxy.createHandler())
 
   // 6. 启动服务器
   await app.listen({ port: config.PLATFORM_PORT, host: '0.0.0.0' })
@@ -188,17 +172,8 @@ async function main() {
 
   // 8. 恢复之前运行的实例
   await healthMonitor.recoverInstances()
-  await webhookProxy.refreshRoutes()
 
-  // 9. 定期刷新 webhook 路由 & 检查过期订阅
-  const webhookRefreshTimer = setInterval(async () => {
-    try {
-      await webhookProxy.refreshRoutes()
-    } catch (err) {
-      console.error('[Platform] 刷新 webhook 路由失败:', err)
-    }
-  }, 60_000)
-
+  // 9. 定期检查过期订阅
   const subscriptionCheckTimer = setInterval(async () => {
     try {
       const expired = await subscriptionService.expireOverdue()
@@ -211,7 +186,6 @@ async function main() {
   // 10. 优雅关闭
   const shutdown = async (signal: string) => {
     console.info(`\n[Platform] 收到 ${signal}，开始关闭...`)
-    clearInterval(webhookRefreshTimer)
     clearInterval(subscriptionCheckTimer)
     healthMonitor.stop()
     await instanceManager.stopAll()
