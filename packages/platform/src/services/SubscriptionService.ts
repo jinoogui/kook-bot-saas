@@ -78,10 +78,18 @@ export class SubscriptionService {
       ))
     const result: Record<string, Record<string, any>> = {}
     for (const s of subs) {
-      try {
-        result[s.pluginId] = s.configJson ? JSON.parse(s.configJson) : {}
-      } catch {
+      if (!s.configJson) {
         result[s.pluginId] = {}
+        continue
+      }
+      try {
+        const parsed = JSON.parse(s.configJson)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('配置必须是对象')
+        }
+        result[s.pluginId] = parsed
+      } catch (err: any) {
+        throw new Error(`插件 ${s.pluginId} 配置格式错误: ${err?.message || '无效 JSON'}`)
       }
     }
     return result

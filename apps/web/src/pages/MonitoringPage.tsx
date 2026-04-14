@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Activity,
   Clock,
@@ -12,7 +12,7 @@ import {
   XCircle,
   Search,
 } from 'lucide-react';
-import api, { type InstanceLog } from '../lib/api';
+import api, { type InstanceLog, type InstanceDiagnosis } from '../lib/api';
 
 export default function MonitoringPage() {
   const location = useLocation();
@@ -20,6 +20,7 @@ export default function MonitoringPage() {
   const [selectedTenant, setSelectedTenant] = useState(initialTenant);
   const [logLevel, setLogLevel] = useState('all');
   const [logSearch, setLogSearch] = useState('');
+  const [diagnosis, setDiagnosis] = useState<InstanceDiagnosis | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const { data: tenants } = useQuery({
@@ -63,6 +64,11 @@ export default function MonitoringPage() {
     refetchInterval: status?.status === 'running' ? 5000 : false,
   });
 
+  const diagnoseMutation = useMutation({
+    mutationFn: () => api.instances.diagnose(selectedTenant).then((r) => r.data),
+    onSuccess: (data) => setDiagnosis(data),
+  });
+
   const logs: InstanceLog[] = (logsData as any)?.rows ?? [];
 
   // Auto-scroll to bottom when new logs arrive
@@ -71,6 +77,10 @@ export default function MonitoringPage() {
       logEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [logs.length]);
+
+  useEffect(() => {
+    setDiagnosis(null);
+  }, [selectedTenant]);
 
   const formatUptime = (seconds: number | null) => {
     if (seconds == null) return '--';
@@ -134,14 +144,23 @@ export default function MonitoringPage() {
           <p className="text-gray-500 text-sm mt-1">查看 Bot 实例的运行状态</p>
         </div>
         {selectedTenant && (
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="btn-secondary flex items-center gap-1.5 text-sm"
-          >
-            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
-            刷新
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => diagnoseMutation.mutate()}
+              disabled={diagnoseMutation.isPending}
+              className="btn-secondary flex items-center gap-1.5 text-sm"
+            >
+              {diagnoseMutation.isPending ? '诊断中...' : '一键诊断'}
+            </button>
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="btn-secondary flex items-center gap-1.5 text-sm"
+            >
+              <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
+              刷新
+            </button>
+          </div>
         )}
       </div>
 
@@ -199,6 +218,39 @@ export default function MonitoringPage() {
               value={String(status.restartCount)}
             />
           </div>
+
+          {diagnosis && (
+            <div className="card">
+              <h3 className="text-lg font-semibold mb-3">诊断结果</h3>
+              <div className="grid gap-3 md:grid-cols-2 text-sm">
+                <div>
+                  <span className="text-gray-500">实例进程：</span>
+                  <span className={diagnosis.checks.processTracked ? 'text-green-600' : 'text-red-600'}>
+                    {diagnosis.checks.processTracked ? '已跟踪' : '未跟踪'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500">插件表：</span>
+                  <span className={diagnosis.checks.tenantTablesOk ? 'text-green-600' : 'text-red-600'}>
+                    {diagnosis.checks.tenantTablesOk ? '完整' : '缺失'}
+                  </span>
+                </div>
+              </div>
+              {diagnosis.missingTables.length > 0 && (
+                <p className="mt-2 text-xs text-red-600">缺失表: {diagnosis.missingTables.join(', ')}</p>
+              )}
+              {diagnosis.recentErrors.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs text-gray-500 mb-1">最近错误</p>
+                  <div className="space-y-1">
+                    {diagnosis.recentErrors.map((e) => (
+                      <p key={e.id} className="text-xs text-red-600 break-all">{e.message}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Log viewer */}
           <div className="card">

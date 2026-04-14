@@ -107,6 +107,29 @@ export function registerInstanceRoutes(
     })
   })
 
+  // 一键诊断
+  app.get('/api/instances/:id/diagnose', {
+    preHandler: [app.authenticate],
+  }, async (request, reply) => {
+    const { userId } = request.user as any
+    const { id } = request.params as any
+    const owned = await tenantService.verifyOwnership(id, userId)
+    if (!owned) return reply.code(403).send({ error: '无权操作' })
+
+    const diagnosis = await instanceManager.diagnoseInstance(id)
+    const recentErrors = logService
+      ? await logService.queryLogs({ tenantId: id, level: 'error', page: 1, size: 5 })
+      : { rows: [] }
+
+    return reply.send({
+      success: true,
+      data: {
+        ...diagnosis,
+        recentErrors: recentErrors.rows,
+      },
+    })
+  })
+
   // 获取实例日志
   app.get('/api/instances/:id/logs', {
     preHandler: [app.authenticate],

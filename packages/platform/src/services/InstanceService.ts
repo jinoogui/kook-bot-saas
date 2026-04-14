@@ -1,6 +1,6 @@
 import { fork, type ChildProcess } from 'child_process'
-import { fileURLToPath } from 'url'
-import path from 'path'
+import axios from 'axios'
+import mysql from 'mysql2/promise'
 import type { TenantService } from './TenantService.js'
 import type { SubscriptionService } from './SubscriptionService.js'
 import type { LogService } from './LogService.js'
@@ -22,8 +22,26 @@ export interface InstanceConfig {
   redisUrl: string
 }
 
+export interface InstanceDiagnosis {
+  tenantId: string
+  tracked: boolean
+  status: 'running' | 'starting' | 'stopping' | 'error' | 'stopped'
+  pid: number | null
+  lastHeartbeat: number | null
+  missingTables: string[]
+  checks: {
+    tenantTablesOk: boolean
+    processTracked: boolean
+  }
+}
+
 export class InstanceManager {
   private instances = new Map<string, InstanceInfo>()
+  private readonly requiredTenantTables = [
+    'plugin_points_checkin_records',
+    'plugin_points_user_points',
+    'plugin_filter_ads',
+  ]
 
   constructor(
     private tenantService: TenantService,
@@ -35,6 +53,78 @@ export class InstanceManager {
     },
     private logService?: LogService,
   ) {}
+
+  private async runPreflightChecks(
+    botToken: string,
+    pluginConfigs: Record<string, Record<string, any>>,
+  ): Promise<void> {
+    await Promise.all([
+      this.validateBotToken(botToken),
+      this.validatePluginConfigShape(pluginConfigs),
+      this.verifyTenantTables(),
+    ])
+  }
+
+  private async validateBotToken(botToken: string): Promise<void> {
+    try {
+      const resp = await axios.get('https://www.kookapp.cn/api/v3/gateway/index', {
+        params: { compress: 0 },
+        headers: { Authorization: `Bot ${botToken}` },
+        timeout: 8000,
+      })
+      if (resp.data?.code !== 0 || !resp.data?.data?.url) {
+        throw new Error(resp.data?.message || 'Kook 网关返回异常')
+      }
+    } catch (err: any) {
+      const status = err?.response?.status
+      const message = err?.response?.data?.message || err?.message || String(err)
+      throw new Error(`Bot Token 校验失败${status ? ` (HTTP ${status})` : ''}: ${message}`)
+    }
+  }
+
+  private async validatePluginConfigShape(pluginConfigs: Record<string, Record<string, any>>): Promise<void> {
+    for (const [pluginId, cfg] of Object.entries(pluginConfigs)) {
+      if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) {
+        throw new Error(`插件配置格式错误: ${pluginId}`)
+      }
+    }
+  }
+
+  private async getMissingTenantTables(): Promise<string[]> {
+    const conn = await mysql.createConnection(this.config.mysqlUrl)
+    try {
+      const [rows] = await conn.query<any[]>('SHOW TABLES')
+      const tableSet = new Set(rows.map((r) => String(Object.values(r)[0])))
+      return this.requiredTenantTables.filter((t) => !tableSet.has(t))
+    } finally {
+      await conn.end()
+    }
+  }
+
+  private async verifyTenantTables(): Promise<void> {
+    const missing = await this.getMissingTenantTables()
+    if (missing.length > 0) {
+      throw new Error(`租户数据库缺少插件表: ${missing.join(', ')}`)
+    }
+  }
+
+  async diagnoseInstance(tenantId: string): Promise<InstanceDiagnosis> {
+    const info = this.instances.get(tenantId)
+    const missingTables = await this.getMissingTenantTables()
+    return {
+      tenantId,
+      tracked: !!info,
+      status: info?.status ?? 'stopped',
+      pid: info?.process?.pid ?? null,
+      lastHeartbeat: info?.lastHeartbeat ?? null,
+      missingTables,
+      checks: {
+        tenantTablesOk: missingTables.length === 0,
+        processTracked: !!info,
+      },
+    }
+  }
+
 
   /** 启动 Bot 实例 */
   async startInstance(tenantId: string): Promise<InstanceInfo> {
@@ -58,6 +148,9 @@ export class InstanceManager {
     // 获取已启用的插件及其配置
     const enabledPlugins = await this.subscriptionService.getEnabledPluginIds(tenantId)
     const pluginConfigs = await this.subscriptionService.getEnabledPluginConfigs(tenantId)
+
+    // 启动前预检（token/配置/表）
+    await this.runPreflightChecks(botToken, pluginConfigs)
 
     // 构建配置
     const instanceConfig: InstanceConfig = {

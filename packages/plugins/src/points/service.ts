@@ -262,8 +262,25 @@ export class PointsService {
 
     const today = getChinaDate()
 
-    // Atomic insert - use ON DUPLICATE KEY UPDATE to detect duplicate
-    const result = await this.db.insert(pluginPointsCheckinRecords).values({
+    // Check if already checked in today
+    const [existing] = await this.db
+      .select({ id: pluginPointsCheckinRecords.id })
+      .from(pluginPointsCheckinRecords)
+      .where(and(
+        eq(pluginPointsCheckinRecords.tenantId, this.tenantId),
+        eq(pluginPointsCheckinRecords.userId, userId),
+        eq(pluginPointsCheckinRecords.guildId, guildId),
+        eq(pluginPointsCheckinRecords.checkinDate, today),
+      ))
+      .limit(1)
+
+    if (existing) {
+      const points = await this.getUserPoints(userId, guildId)
+      return { alreadyCheckin: true, streak, currentPoints: points }
+    }
+
+    // Insert checkin record
+    await this.db.insert(pluginPointsCheckinRecords).values({
       tenantId: this.tenantId,
       userId,
       guildId,
@@ -271,15 +288,7 @@ export class PointsService {
       points:       basePoints,
       streakDays:   newStreak,
       bonusPoints,
-    }).onDuplicateKeyUpdate({
-      set: { points: pluginPointsCheckinRecords.points }, // no-op update
     })
-
-    // If no row was actually inserted (duplicate), user already checked in
-    if ((result as any)[0]?.affectedRows === 0 || (result as any).affectedRows === 0) {
-      const points = await this.getUserPoints(userId, guildId)
-      return { alreadyCheckin: true, streak, currentPoints: points }
-    }
 
     // Award points
     await this.db

@@ -66,7 +66,10 @@ export default function BotSetupPage() {
       setMessage({ type: 'success', text: 'Bot 已启动' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '启动失败' }),
+    onError: (err: any) => {
+      const detail = err?.response?.data?.error || err?.message || '启动失败';
+      setMessage({ type: 'error', text: `启动失败: ${detail}` });
+    },
   });
 
   const stopMutation = useMutation({

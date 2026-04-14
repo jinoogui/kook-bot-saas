@@ -10,7 +10,7 @@ export const welcomeConfigSchema = z.object({
   /** 消息类型: kmarkdown | card */
   message_type: z.enum(['kmarkdown', 'card']).default('kmarkdown'),
   /** 卡片内容 JSON */
-  card_content: z.string().default(''),
+  card_content: z.string().default('[{"type":"card","theme":"primary","size":"lg","modules":[{"type":"header","text":{"type":"plain-text","content":"欢迎新成员加入"}},{"type":"section","text":{"type":"kmarkdown","content":"欢迎 {user} 来到服务器！"}}]}]'),
   /** 是否启用欢送消息 */
   goodbye_enabled: z.boolean().default(false),
   /** 欢送消息模板 */

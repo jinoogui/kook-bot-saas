@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Save, ToggleLeft, ToggleRight, RefreshCw, Clock } from 'lucide-react';
 import api, { type Plugin, type Subscription } from '../lib/api';
+import { WelcomeCardEditor } from '../components/welcome-card/WelcomeCardEditor';
 
 export default function PluginConfigPage() {
   const { id: pluginId } = useParams<{ id: string }>();
@@ -46,6 +47,7 @@ export default function PluginConfigPage() {
   });
 
   const existingSub = subscriptions?.find((s: Subscription) => s.pluginId === pluginId);
+  const isWelcomePlugin = pluginId === 'welcome';
 
   const subscribeMutation = useMutation({
     mutationFn: () => api.subscriptions.subscribe(selectedTenant, pluginId!, planType),
@@ -92,6 +94,13 @@ export default function PluginConfigPage() {
     return (parsed as { properties?: Record<string, ConfigField> }).properties;
   }, [rawSchema]);
 
+  const formEntries = useMemo(() => {
+    if (!schemaProperties) return [] as Array<[string, ConfigField]>;
+    const entries = Object.entries(schemaProperties) as Array<[string, ConfigField]>;
+    if (!isWelcomePlugin) return entries;
+    return entries.filter(([key]) => key !== 'card_content' && key !== 'message_type');
+  }, [schemaProperties, isWelcomePlugin]);
+
   useEffect(() => {
     if (existingSub) {
       // Merge schema defaults with saved config so unsaved fields have defaults
@@ -105,8 +114,17 @@ export default function PluginConfigPage() {
       setEnabled(existingSub.enabled);
     }
   }, [existingSub, schemaProperties]);
+
+  const handleWelcomeCardChange = (cardContent: string, mode: 'card' | 'kmarkdown') => {
+    setConfig((prev) => ({
+      ...prev,
+      card_content: cardContent,
+      message_type: mode,
+    }));
+  };
+
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className={`space-y-6 ${isWelcomePlugin ? 'max-w-6xl' : 'max-w-2xl'}`}>
       <button
         onClick={() => navigate(-1)}
         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
@@ -228,7 +246,7 @@ export default function PluginConfigPage() {
               </div>
 
               {/* Config form */}
-              {schemaProperties && Object.keys(schemaProperties).length > 0 && (
+              {(isWelcomePlugin || (schemaProperties && Object.keys(schemaProperties).length > 0)) && (
                 <div className="card">
                   <h3 className="text-lg font-semibold mb-4">插件配置</h3>
                   <form
@@ -238,7 +256,15 @@ export default function PluginConfigPage() {
                     }}
                     className="space-y-4"
                   >
-                    {Object.entries(schemaProperties).map(([key, field]) => (
+                    {isWelcomePlugin && (
+                      <WelcomeCardEditor
+                        value={String(config.card_content || '')}
+                        messageType={String(config.message_type || 'kmarkdown')}
+                        onChange={handleWelcomeCardChange}
+                      />
+                    )}
+
+                    {formEntries.map(([key, field]) => (
                       <ConfigFormField
                         key={key}
                         name={key}
@@ -247,6 +273,7 @@ export default function PluginConfigPage() {
                         onChange={(val) => setConfig((prev) => ({ ...prev, [key]: val }))}
                       />
                     ))}
+
                     <button
                       type="submit"
                       className="btn-primary flex items-center gap-2"
@@ -259,7 +286,7 @@ export default function PluginConfigPage() {
                 </div>
               )}
 
-              {(!schemaProperties || Object.keys(schemaProperties).length === 0) && (
+              {!isWelcomePlugin && (!schemaProperties || Object.keys(schemaProperties).length === 0) && (
                 <div className="card text-center py-8 text-gray-500">
                   <RefreshCw className="mx-auto mb-2 text-gray-300" size={24} />
                   <p>此插件无额外配置项</p>

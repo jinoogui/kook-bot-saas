@@ -93,22 +93,50 @@ export class WelcomeService {
     return doReplace(cards)
   }
 
+  private async getRuntimeConfig(guildId: string): Promise<{
+    enabled: boolean
+    welcomeMessage: string
+    welcomeChannelId: string
+    messageType: 'kmarkdown' | 'card'
+    cardContent: string
+    goodbyeEnabled: boolean
+    goodbyeMessage: string
+    goodbyeChannelId: string
+  }> {
+    const cfg = await this.ctx.getConfig()
+    const row = await this.getConfig(guildId)
+
+    const enabled = cfg.enabled ?? row?.enabled ?? true
+    const welcomeMessage = cfg.welcome_message ?? row?.content ?? '欢迎 {user} 加入服务器！'
+    const welcomeChannelId = cfg.welcome_channel_id ?? row?.channelId ?? ''
+    const messageType = (cfg.message_type ?? row?.messageType ?? 'kmarkdown') === 'card' ? 'card' : 'kmarkdown'
+    const cardContent = cfg.card_content ?? row?.cardContent ?? ''
+
+    return {
+      enabled: !!enabled,
+      welcomeMessage,
+      welcomeChannelId,
+      messageType,
+      cardContent,
+      goodbyeEnabled: !!(cfg.goodbye_enabled ?? false),
+      goodbyeMessage: cfg.goodbye_message ?? '{username} 离开了服务器，再见！',
+      goodbyeChannelId: cfg.goodbye_channel_id ?? '',
+    }
+  }
+
   async onUserJoin(userId: string, guildId: string, username: string): Promise<void> {
     try {
-      const cfg = await this.getConfig(guildId)
-      if (!cfg || !cfg.enabled) return
+      const runtime = await this.getRuntimeConfig(guildId)
+      if (!runtime.enabled) return
+      if (!runtime.welcomeChannelId) return
 
-      const channelId = cfg.channelId
-      if (!channelId) return
-
-      if (cfg.messageType === 'card' && cfg.cardContent) {
-        const cards = JSON.parse(cfg.cardContent)
+      if (runtime.messageType === 'card' && runtime.cardContent) {
+        const cards = JSON.parse(runtime.cardContent)
         const replaced = await this.replaceCardVariables(cards, userId, guildId, username)
-        await this.ctx.kookApi.sendCardMessage(channelId, replaced)
+        await this.ctx.kookApi.sendCardMessage(runtime.welcomeChannelId, replaced)
       } else {
-        const template = cfg.content ?? '欢迎 {user} 加入服务器！'
-        const message = await this.formatMessage(template, userId, guildId, username)
-        await this.ctx.kookApi.sendKmarkdownMessage(channelId, message)
+        const message = await this.formatMessage(runtime.welcomeMessage, userId, guildId, username)
+        await this.ctx.kookApi.sendKmarkdownMessage(runtime.welcomeChannelId, message)
       }
     } catch (err) {
       this.ctx.logger.error('发送欢迎消息失败:', err)
@@ -117,17 +145,12 @@ export class WelcomeService {
 
   async onUserLeave(userId: string, guildId: string, username: string): Promise<void> {
     try {
-      const config = await this.ctx.getConfig()
-      const goodbyeEnabled = config.goodbye_enabled ?? false
-      if (!goodbyeEnabled) return
+      const runtime = await this.getRuntimeConfig(guildId)
+      if (!runtime.goodbyeEnabled) return
+      if (!runtime.goodbyeChannelId) return
 
-      const channelId = config.goodbye_channel_id ?? ''
-      if (!channelId) return
-
-      const template = config.goodbye_message ?? '{username} 离开了服务器，再见！'
-      const message = await this.formatMessage(template, userId, guildId, username)
-
-      await this.ctx.kookApi.sendKmarkdownMessage(channelId, message)
+      const message = await this.formatMessage(runtime.goodbyeMessage, userId, guildId, username)
+      await this.ctx.kookApi.sendKmarkdownMessage(runtime.goodbyeChannelId, message)
     } catch (err) {
       this.ctx.logger.error('发送欢送消息失败:', err)
     }

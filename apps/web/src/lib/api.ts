@@ -87,6 +87,20 @@ export interface InstanceStatus {
   restartCount: number;
 }
 
+export interface InstanceDiagnosis {
+  tenantId: string;
+  tracked: boolean;
+  status: 'running' | 'starting' | 'stopping' | 'error' | 'stopped';
+  pid: number | null;
+  lastHeartbeat: number | null;
+  missingTables: string[];
+  checks: {
+    tenantTablesOk: boolean;
+    processTracked: boolean;
+  };
+  recentErrors: InstanceLog[];
+}
+
 export interface InstanceLog {
   id: number;
   tenantId: string;
@@ -141,6 +155,8 @@ const instances = {
   restart: (id: string) => api.post(`/instances/${id}/restart`),
 
   status: (id: string) => api.get<InstanceStatus>(`/instances/${id}/status`),
+
+  diagnose: (id: string) => api.get<InstanceDiagnosis>(`/instances/${id}/diagnose`),
 
   logs: (id: string, params?: { level?: string; search?: string; page?: number; size?: number }) => {
     const query = new URLSearchParams();
