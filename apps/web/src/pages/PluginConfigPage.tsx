@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Save, ToggleLeft, ToggleRight, RefreshCw, Clock } from 'lucide-react';
@@ -10,9 +10,10 @@ export default function PluginConfigPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const statePlugin = (location.state as { plugin?: Plugin })?.plugin;
+  const statePlugin = (location.state as { plugin?: Plugin; tenantId?: string })?.plugin;
+  const stateTenantId = (location.state as { tenantId?: string })?.tenantId;
 
-  const [selectedTenant, setSelectedTenant] = useState('');
+  const [selectedTenant, setSelectedTenant] = useState(stateTenantId || '');
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [enabled, setEnabled] = useState(true);
   const [planType, setPlanType] = useState('monthly');
@@ -45,13 +46,6 @@ export default function PluginConfigPage() {
   });
 
   const existingSub = subscriptions?.find((s: Subscription) => s.pluginId === pluginId);
-
-  useEffect(() => {
-    if (existingSub) {
-      setConfig(existingSub.config || {});
-      setEnabled(existingSub.enabled);
-    }
-  }, [existingSub]);
 
   const subscribeMutation = useMutation({
     mutationFn: () => api.subscriptions.subscribe(selectedTenant, pluginId!, planType),
@@ -91,10 +85,26 @@ export default function PluginConfigPage() {
   });
 
   const rawSchema = (plugin as any)?.config_schema || (plugin as any)?.configSchema;
-  const configSchema = typeof rawSchema === 'string' ? (() => { try { return JSON.parse(rawSchema); } catch { return {}; } })() : (rawSchema || {});
-  const schemaProperties = (configSchema as { properties?: Record<string, ConfigField> })
-    .properties;
+  const schemaProperties = useMemo(() => {
+    const parsed = typeof rawSchema === 'string'
+      ? (() => { try { return JSON.parse(rawSchema); } catch { return {}; } })()
+      : (rawSchema || {});
+    return (parsed as { properties?: Record<string, ConfigField> }).properties;
+  }, [rawSchema]);
 
+  useEffect(() => {
+    if (existingSub) {
+      // Merge schema defaults with saved config so unsaved fields have defaults
+      const defaults: Record<string, unknown> = {};
+      if (schemaProperties) {
+        for (const [key, field] of Object.entries(schemaProperties)) {
+          if (field.default !== undefined) defaults[key] = field.default;
+        }
+      }
+      setConfig({ ...defaults, ...(existingSub.config || {}) });
+      setEnabled(existingSub.enabled);
+    }
+  }, [existingSub, schemaProperties]);
   return (
     <div className="space-y-6 max-w-2xl">
       <button
@@ -344,18 +354,30 @@ function ConfigFormField({
     );
   }
 
+  // Multi-line string fields (description mentions "每行")
+  const isMultiline = field.description?.includes('每行');
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       {field.description && (
         <p className="text-xs text-gray-400 mb-1">{field.description}</p>
       )}
-      <input
-        type="text"
-        className="input-field"
-        value={String(currentValue)}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      {isMultiline ? (
+        <textarea
+          className="input-field min-h-[100px] font-mono text-sm"
+          value={String(currentValue)}
+          onChange={(e) => onChange(e.target.value)}
+          rows={5}
+        />
+      ) : (
+        <input
+          type="text"
+          className="input-field"
+          value={String(currentValue)}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
     </div>
   );
 }

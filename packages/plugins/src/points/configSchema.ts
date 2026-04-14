@@ -1,6 +1,18 @@
 import { z } from 'zod'
 
 export const pointsConfigSchema = z.object({
+  /** 签到命令名 */
+  checkin_command: z.string().default('签到'),
+  /** 积分查询命令名 */
+  points_command: z.string().default('积分'),
+  /** 排行榜命令名 */
+  rank_command: z.string().default('排行榜'),
+  /** 商店命令名 */
+  shop_command: z.string().default('商店'),
+  /** 购买命令名 */
+  buy_command: z.string().default('购买'),
+  /** 宝箱命令名 */
+  box_command: z.string().default('宝箱'),
   /** 签到最小积分 */
   checkin_min_points: z.number().int().min(0).default(10),
   /** 签到最大积分 */

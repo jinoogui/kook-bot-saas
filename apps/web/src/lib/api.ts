@@ -73,9 +73,7 @@ export interface Subscription {
   planType: string;
   status: string;
   enabled: boolean;
-  isEnabled?: number;
   config: Record<string, unknown>;
-  configJson?: string;
   expiresAt?: string;
   startedAt?: string;
   createdAt: string;
@@ -164,7 +162,17 @@ const plugins = {
 
 const subscriptions = {
   list: (tenantId: string) =>
-    api.get<Subscription[]>(`/tenants/${tenantId}/subscriptions`),
+    api.get<Subscription[]>(`/tenants/${tenantId}/subscriptions`).then((res) => {
+      // Backend returns isEnabled (number) and configJson (string), normalize them
+      if (Array.isArray(res.data)) {
+        res.data = res.data.map((s: any) => ({
+          ...s,
+          enabled: s.enabled ?? (s.isEnabled === 1),
+          config: s.config ?? (s.configJson ? JSON.parse(s.configJson) : {}),
+        }));
+      }
+      return res;
+    }),
 
   subscribe: (tenantId: string, pluginId: string, planType: string) =>
     api.post(`/tenants/${tenantId}/subscriptions`, {

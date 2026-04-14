@@ -28,10 +28,26 @@ export class PointsPlugin extends BasePlugin {
   readonly category = 'engagement' as const
 
   private service!: PointsService
+  private commandNames: Record<string, string> = {}
 
   override async onLoad(ctx: PluginContext): Promise<void> {
     await super.onLoad(ctx)
     this.service = new PointsService(ctx)
+
+    // Load custom command names from config
+    try {
+      const config = await ctx.getConfig()
+      this.commandNames = {
+        checkin: config.checkin_command || '签到',
+        points: config.points_command || '积分',
+        rank: config.rank_command || '排行榜',
+        shop: config.shop_command || '商店',
+        buy: config.buy_command || '购买',
+        box: config.box_command || '宝箱',
+      }
+    } catch {
+      // Defaults if config unavailable
+    }
   }
 
   override getSchema(): Record<string, any> {
@@ -46,7 +62,7 @@ export class PointsPlugin extends BasePlugin {
   }
 
   override getCommands(): CommandDefinition[] {
-    return getCommands()
+    return getCommands(this.commandNames)
   }
 
   override getApiRoutes(): ApiRouteDefinition[] {

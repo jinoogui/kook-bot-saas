@@ -51,11 +51,11 @@ function buildCheckinCard(result: CheckinResult, username: string): object {
   }
 }
 
-export function getCommands(): CommandDefinition[] {
+export function getCommands(customNames: Record<string, string> = {}): CommandDefinition[] {
   return [
     {
-      name: '签到',
-      aliases: ['checkin', '打卡', 'qiandao'],
+      name: customNames.checkin || '签到',
+      aliases: ['checkin', '打卡', 'qiandao', '签到'],
       description: '每日签到获取积分',
       permission: 'everyone',
       handler: async (event: KookMessageEvent, _args: string[], ctx: PluginContext): Promise<void> => {
@@ -72,8 +72,8 @@ export function getCommands(): CommandDefinition[] {
       },
     },
     {
-      name: '积分',
-      aliases: ['points', 'point', '我的积分', 'jifen', '积分查询'],
+      name: customNames.points || '积分',
+      aliases: ['points', 'point', '我的积分', 'jifen', '积分查询', '积分'],
       description: '查看当前积分',
       permission: 'everyone',
       handler: async (event: KookMessageEvent, _args: string[], ctx: PluginContext): Promise<void> => {
@@ -120,8 +120,8 @@ export function getCommands(): CommandDefinition[] {
       },
     },
     {
-      name: '排行榜',
-      aliases: ['rank', 'ranking', '排行', 'phb'],
+      name: customNames.rank || '排行榜',
+      aliases: ['rank', 'ranking', '排行', 'phb', '排行榜'],
       description: '积分排行榜',
       permission: 'everyone',
       handler: async (event: KookMessageEvent, _args: string[], ctx: PluginContext): Promise<void> => {
@@ -155,8 +155,8 @@ export function getCommands(): CommandDefinition[] {
       },
     },
     {
-      name: '商店',
-      aliases: ['shop', '积分商店', '积分商城', 'shangcheng', '商城'],
+      name: customNames.shop || '商店',
+      aliases: ['shop', '积分商店', '积分商城', 'shangcheng', '商城', '商店'],
       description: '查看积分商店',
       permission: 'everyone',
       handler: async (event: KookMessageEvent, _args: string[], ctx: PluginContext): Promise<void> => {
@@ -193,8 +193,8 @@ export function getCommands(): CommandDefinition[] {
       },
     },
     {
-      name: '购买',
-      aliases: ['buy', '兑换', 'duihuan'],
+      name: customNames.buy || '购买',
+      aliases: ['buy', '兑换', 'duihuan', '购买'],
       description: '兑换商品',
       permission: 'everyone',
       handler: async (event: KookMessageEvent, args: string[], ctx: PluginContext): Promise<void> => {
@@ -235,8 +235,8 @@ export function getCommands(): CommandDefinition[] {
       },
     },
     {
-      name: '宝箱',
-      aliases: ['box', '开箱'],
+      name: customNames.box || '宝箱',
+      aliases: ['box', '开箱', '宝箱'],
       description: '开启积分宝箱',
       permission: 'everyone',
       handler: async (event: KookMessageEvent, _args: string[], ctx: PluginContext): Promise<void> => {

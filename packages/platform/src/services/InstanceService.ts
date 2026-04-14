@@ -17,6 +17,7 @@ export interface InstanceConfig {
   tenantId: string
   botToken: string
   enabledPlugins: string[]
+  pluginConfigs: Record<string, Record<string, any>>
   mysqlUrl: string
   redisUrl: string
 }
@@ -54,14 +55,16 @@ export class InstanceManager {
     const tenant = await this.tenantService.getById(tenantId)
     if (!tenant) throw new Error('租户不存在')
 
-    // 获取已启用的插件
+    // 获取已启用的插件及其配置
     const enabledPlugins = await this.subscriptionService.getEnabledPluginIds(tenantId)
+    const pluginConfigs = await this.subscriptionService.getEnabledPluginConfigs(tenantId)
 
     // 构建配置
     const instanceConfig: InstanceConfig = {
       tenantId,
       botToken,
       enabledPlugins,
+      pluginConfigs,
       mysqlUrl: this.config.mysqlUrl,
       redisUrl: this.config.redisUrl,
     }

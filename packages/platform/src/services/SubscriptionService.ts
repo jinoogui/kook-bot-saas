@@ -63,6 +63,30 @@ export class SubscriptionService {
     return subs.map(s => s.pluginId)
   }
 
+  /** 获取租户所有已启用插件的配置 */
+  async getEnabledPluginConfigs(tenantId: string): Promise<Record<string, Record<string, any>>> {
+    const subs = await this.db
+      .select({
+        pluginId: subscriptions.pluginId,
+        configJson: subscriptions.configJson,
+      })
+      .from(subscriptions)
+      .where(and(
+        eq(subscriptions.tenantId, tenantId),
+        eq(subscriptions.status, 'active'),
+        eq(subscriptions.isEnabled, 1),
+      ))
+    const result: Record<string, Record<string, any>> = {}
+    for (const s of subs) {
+      try {
+        result[s.pluginId] = s.configJson ? JSON.parse(s.configJson) : {}
+      } catch {
+        result[s.pluginId] = {}
+      }
+    }
+    return result
+  }
+
   /** 订阅（购买）插件 — 付费插件创建 pending 订阅 + pending 支付 */
   async subscribe(
     tenantId: string,

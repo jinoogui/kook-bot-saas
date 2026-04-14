@@ -24,6 +24,7 @@ export interface BotEngineConfig {
   botToken: string
   port?: number
   enabledPlugins: string[]
+  pluginConfigs?: Record<string, Record<string, any>>
   mysqlUrl: string
   redisUrl: string
 }
@@ -76,6 +77,15 @@ export class BotEngine {
     // 4. Create scoped wrappers
     this.scopedRedis = new ScopedRedisImpl(this.redis, tenantId)
     this.db = new TenantDBImpl(drizzleDb, tenantId)
+
+    // 4.5. Sync plugin configs from MySQL (via IPC) to Redis
+    const pluginConfigs = this.config.pluginConfigs ?? {}
+    for (const [pluginId, cfg] of Object.entries(pluginConfigs)) {
+      const configKey = `plugin:${pluginId}:config`
+      for (const [k, v] of Object.entries(cfg)) {
+        await this.scopedRedis.hset(configKey, k, JSON.stringify(v))
+      }
+    }
 
     // 5. Register all available plugins
     for (const plugin of this.availablePlugins) {

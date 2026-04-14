@@ -93,10 +93,9 @@ export default function BotSetupPage() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    updateMutation.mutate({
-      name,
-      botToken,
-    });
+    const data: Record<string, unknown> = { name };
+    if (botToken) data.botToken = botToken;
+    updateMutation.mutate(data);
   };
 
   const statusBadge = (status?: string) => {
@@ -213,13 +212,18 @@ export default function BotSetupPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bot Token</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Bot Token
+                  {tenant.hasToken && !botToken && (
+                    <span className="ml-2 text-xs text-green-600 font-normal">已配置</span>
+                  )}
+                </label>
                 <input
                   className="input-field font-mono text-sm"
                   type="password"
                   value={botToken}
                   onChange={(e) => setBotToken(e.target.value)}
-                  required
+                  placeholder={tenant.hasToken ? '留空则保持原 Token 不变' : '请输入 Bot Token'}
                 />
               </div>
 

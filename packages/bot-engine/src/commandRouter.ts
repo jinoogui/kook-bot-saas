@@ -57,18 +57,19 @@ export class CommandRouter {
 
     // Strip KMarkdown mention syntax to prevent injection
     const cleanContent = content.replace(/\(met\).*?\(met\)/g, '').trim()
-    if (!cleanContent || !cleanContent.startsWith(COMMAND_PREFIX)) return false
+    if (!cleanContent) return false
 
-    // Parse: "/command arg1 arg2 ..."
-    const withoutPrefix = cleanContent.slice(COMMAND_PREFIX.length)
+    // Support both "/command" and "command" (without prefix)
+    const hasPrefix = cleanContent.startsWith(COMMAND_PREFIX)
+    const withoutPrefix = hasPrefix ? cleanContent.slice(COMMAND_PREFIX.length) : cleanContent
     const parts = withoutPrefix.split(/\s+/)
     const cmdName = parts[0]
     if (!cmdName) return false
 
-    const args = parts.slice(1)
-
     const registered = this.lookup.get(cmdName.toLowerCase())
     if (!registered) return false
+
+    const args = parts.slice(1)
 
     // Permission check
     const permission = registered.definition.permission ?? 'everyone'
@@ -84,6 +85,8 @@ export class CommandRouter {
       await registered.definition.handler(event, args, registered.ctx)
     } catch (err) {
       registered.ctx.logger.error(`Command "${cmdName}" error: ${err}`)
+      // Re-throw so engine can log via IPC
+      throw err
     }
 
     return true
