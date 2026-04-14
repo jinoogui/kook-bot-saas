@@ -30,6 +30,13 @@ export default function PluginConfigPage() {
     queryFn: () => api.tenants.list().then((r) => r.data),
   });
 
+  // Auto-select when user has only one bot
+  useEffect(() => {
+    if (!selectedTenant && tenants?.length === 1) {
+      setSelectedTenant(tenants[0].id);
+    }
+  }, [tenants, selectedTenant]);
+
   const { data: subscriptions } = useQuery({
     queryKey: ['subscriptions', selectedTenant],
     queryFn: () =>

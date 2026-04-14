@@ -20,6 +20,13 @@ export default function BotSetupPage() {
     queryFn: () => api.tenants.list().then((r) => r.data),
   });
 
+  // Auto-select when user has only one bot
+  useEffect(() => {
+    if (!selectedTenant && tenants?.length === 1) {
+      setSelectedTenant(tenants[0].id);
+    }
+  }, [tenants, selectedTenant]);
+
   const { data: tenant, isLoading: tenantLoading } = useQuery({
     queryKey: ['tenant', selectedTenant],
     queryFn: () => api.tenants.get(selectedTenant).then((r) => r.data),
