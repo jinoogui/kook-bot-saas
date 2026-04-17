@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { Search, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import api from '../../lib/api';
 
 const ACTION_OPTIONS = [
@@ -27,6 +27,7 @@ export default function AdminAuditLogsPage() {
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin-audit-logs', action, userIdInput, startDate, endDate, page],
@@ -53,6 +54,38 @@ export default function AdminAuditLogsPage() {
       return details;
     }
   };
+
+  const downloadCsv = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const exportMutation = useMutation({
+    mutationFn: () => api.admin.exportAuditLogsCsv({
+      action: action || undefined,
+      userId: userIdInput ? parseInt(userIdInput, 10) : undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    }),
+    onSuccess: (res) => {
+      downloadCsv(res.data as Blob, `audit-logs-${Date.now()}.csv`);
+      setActionMessage({ type: 'success', text: '审计日志导出成功' });
+      setTimeout(() => setActionMessage(null), 3000);
+    },
+    onError: (err: unknown) => {
+      const detail = (err as any)?.code
+        ? `${(err as any).code}: ${(err as any)?.message || '导出失败'}`
+        : ((err as any)?.response?.data?.error || (err as any)?.message || '导出失败');
+      setActionMessage({ type: 'error', text: detail });
+      setTimeout(() => setActionMessage(null), 3000);
+    },
+  });
 
   return (
     <div className="space-y-6">
@@ -104,11 +137,26 @@ export default function AdminAuditLogsPage() {
               onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
             />
           </div>
+          <div className="flex items-end">
+            <button
+              className="btn-primary inline-flex items-center gap-1"
+              onClick={() => exportMutation.mutate()}
+              disabled={exportMutation.isPending}
+            >
+              <Download size={14} />
+              {exportMutation.isPending ? '导出中...' : '导出 CSV'}
+            </button>
+          </div>
         </div>
       </div>
 
       {error && (
         <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg">加载审计日志失败</div>
+      )}
+      {actionMessage && (
+        <div className={`text-sm p-3 rounded-lg ${actionMessage.type === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+          {actionMessage.text}
+        </div>
       )}
 
       {/* Table */}
@@ -139,7 +187,7 @@ export default function AdminAuditLogsPage() {
                 </tr>
               ) : (
                 rows.map((row: any) => (
-                  <>
+                  <div key={row.id}>
                     <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                         {row.createdAt ? new Date(row.createdAt).toLocaleString('zh-CN') : '-'}
@@ -179,7 +227,7 @@ export default function AdminAuditLogsPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </div>
                 ))
               )}
             </tbody>

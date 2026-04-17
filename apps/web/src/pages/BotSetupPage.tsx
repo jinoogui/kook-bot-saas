@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Play, Square, RotateCw, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
-import api, { type Tenant } from '../lib/api';
+import api from '../lib/api';
 
 export default function BotSetupPage() {
   const location = useLocation();
@@ -67,7 +67,7 @@ export default function BotSetupPage() {
       setTimeout(() => setMessage(null), 3000);
     },
     onError: (err: any) => {
-      const detail = err?.response?.data?.error || err?.message || '启动失败';
+      const detail = err?.code ? `${err.code}: ${err.message || '启动失败'}` : (err?.message || '启动失败');
       setMessage({ type: 'error', text: `启动失败: ${detail}` });
     },
   });
@@ -80,7 +80,10 @@ export default function BotSetupPage() {
       setMessage({ type: 'success', text: 'Bot 已停止' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '停止失败' }),
+    onError: (err: any) => {
+      const detail = err?.code ? `${err.code}: ${err.message || '停止失败'}` : (err?.message || '停止失败');
+      setMessage({ type: 'error', text: detail });
+    },
   });
 
   const restartMutation = useMutation({
@@ -91,7 +94,10 @@ export default function BotSetupPage() {
       setMessage({ type: 'success', text: 'Bot 已重启' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '重启失败' }),
+    onError: (err: any) => {
+      const detail = err?.code ? `${err.code}: ${err.message || '重启失败'}` : (err?.message || '重启失败');
+      setMessage({ type: 'error', text: detail });
+    },
   });
 
   const handleSave = (e: React.FormEvent) => {
@@ -100,6 +106,8 @@ export default function BotSetupPage() {
     if (botToken) data.botToken = botToken;
     updateMutation.mutate(data);
   };
+
+  const isTransitional = tenant?.status === 'starting' || tenant?.status === 'stopping';
 
   const statusBadge = (status?: string) => {
     switch (status) {
@@ -113,6 +121,18 @@ export default function BotSetupPage() {
         return (
           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
             <XCircle size={14} /> 已停止
+          </span>
+        );
+      case 'starting':
+        return (
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700">
+            <RotateCw size={14} className="animate-spin" /> 启动中
+          </span>
+        );
+      case 'stopping':
+        return (
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-700">
+            <RotateCw size={14} className="animate-spin" /> 停止中
           </span>
         );
       case 'error':
@@ -166,21 +186,21 @@ export default function BotSetupPage() {
               <button
                 className="btn-primary flex items-center gap-1.5 text-sm"
                 onClick={() => startMutation.mutate()}
-                disabled={tenant.status === 'running' || startMutation.isPending}
+                disabled={tenant.status === 'running' || isTransitional || startMutation.isPending}
               >
                 <Play size={14} /> 启动
               </button>
               <button
                 className="btn-secondary flex items-center gap-1.5 text-sm"
                 onClick={() => stopMutation.mutate()}
-                disabled={tenant.status === 'stopped' || stopMutation.isPending}
+                disabled={tenant.status === 'stopped' || isTransitional || stopMutation.isPending}
               >
                 <Square size={14} /> 停止
               </button>
               <button
                 className="btn-secondary flex items-center gap-1.5 text-sm"
                 onClick={() => restartMutation.mutate()}
-                disabled={tenant.status !== 'running' || restartMutation.isPending}
+                disabled={tenant.status !== 'running' || isTransitional || restartMutation.isPending}
               >
                 <RotateCw size={14} /> 重启
               </button>

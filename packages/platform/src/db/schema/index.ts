@@ -89,12 +89,16 @@ export const payments = mysqlTable('payments', {
   amount: int('amount').notNull(), // 分为单位
   provider: varchar('provider', { length: 32 }), // wechat | alipay | manual
   status: varchar('status', { length: 16 }).notNull().default('pending'), // pending | paid | refunded | failed
+  riskDecision: varchar('risk_decision', { length: 16 }).notNull().default('pass'), // pass | review | reject
+  riskReason: text('risk_reason'),
+  riskCheckedAt: timestamp('risk_checked_at'),
   externalOrderId: varchar('external_order_id', { length: 128 }),
   paidAt: timestamp('paid_at'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (t) => ({
   idxUser: index('idx_user').on(t.userId),
   idxTenant: index('idx_tenant').on(t.tenantId),
+  idxRiskDecisionCreated: index('idx_risk_decision_created').on(t.riskDecision, t.createdAt),
 }))
 
 // ═══════════════════════════════════════════════════

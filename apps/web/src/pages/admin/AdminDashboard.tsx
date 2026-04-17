@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Users, Server, Activity, DollarSign } from 'lucide-react';
-import api from '../../lib/api';
+import { Users, Server, Activity, DollarSign, AlertTriangle, ShieldAlert, TrendingUp, Wallet } from 'lucide-react';
+import api, { type AdminStats } from '../../lib/api';
 
 export default function AdminDashboard() {
   const { data: stats, isLoading, error } = useQuery({
@@ -8,7 +8,16 @@ export default function AdminDashboard() {
     queryFn: () => api.admin.getStats().then((r) => r.data),
   });
 
-  const s = (stats as any) ?? {};
+  const s: AdminStats = stats ?? {
+    userCount: 0,
+    tenantCount: 0,
+    runningCount: 0,
+    totalRevenue: 0,
+    todayRevenue: 0,
+    pendingReviewCount: 0,
+    riskRejectCount: 0,
+    payConversion: 0,
+  };
 
   return (
     <div className="space-y-6">
@@ -31,27 +40,51 @@ export default function AdminDashboard() {
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="注册用户"
-            value={s.userCount ?? 0}
+            value={s.userCount}
             icon={<Users size={20} />}
             color="bg-blue-50 text-blue-600"
           />
           <StatCard
             title="租户总数"
-            value={s.tenantCount ?? 0}
+            value={s.tenantCount}
             icon={<Server size={20} />}
             color="bg-purple-50 text-purple-600"
           />
           <StatCard
             title="运行实例"
-            value={s.runningCount ?? 0}
+            value={s.runningCount}
             icon={<Activity size={20} />}
             color="bg-green-50 text-green-600"
           />
           <StatCard
             title="总收入"
-            value={`¥${((s.totalRevenue ?? 0) / 100).toFixed(2)}`}
+            value={`¥${(s.totalRevenue / 100).toFixed(2)}`}
             icon={<DollarSign size={20} />}
             color="bg-amber-50 text-amber-600"
+          />
+          <StatCard
+            title="今日收入"
+            value={`¥${(s.todayRevenue / 100).toFixed(2)}`}
+            icon={<Wallet size={20} />}
+            color="bg-emerald-50 text-emerald-600"
+          />
+          <StatCard
+            title="待复核订单"
+            value={s.pendingReviewCount}
+            icon={<AlertTriangle size={20} />}
+            color="bg-orange-50 text-orange-600"
+          />
+          <StatCard
+            title="风控拒绝"
+            value={s.riskRejectCount}
+            icon={<ShieldAlert size={20} />}
+            color="bg-rose-50 text-rose-600"
+          />
+          <StatCard
+            title="支付转化率(30天)"
+            value={`${(s.payConversion * 100).toFixed(2)}%`}
+            icon={<TrendingUp size={20} />}
+            color="bg-cyan-50 text-cyan-600"
           />
         </div>
       )}

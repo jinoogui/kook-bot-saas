@@ -39,8 +39,10 @@ export default function DashboardPage() {
     mutationFn: (id: string) => api.instances.start(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenants'] }),
     onError: (err: unknown) => {
-      const msg = (err as any)?.response?.data?.error || '启动失败';
-      setActionError(msg);
+      const detail = (err as any)?.code
+        ? `${(err as any).code}: ${(err as any)?.message || '启动失败'}`
+        : ((err as any)?.response?.data?.error || (err as any)?.message || '启动失败');
+      setActionError(detail);
       setTimeout(() => setActionError(''), 3000);
     },
   });
@@ -49,8 +51,10 @@ export default function DashboardPage() {
     mutationFn: (id: string) => api.instances.stop(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenants'] }),
     onError: (err: unknown) => {
-      const msg = (err as any)?.response?.data?.error || '停止失败';
-      setActionError(msg);
+      const detail = (err as any)?.code
+        ? `${(err as any).code}: ${(err as any)?.message || '停止失败'}`
+        : ((err as any)?.response?.data?.error || (err as any)?.message || '停止失败');
+      setActionError(detail);
       setTimeout(() => setActionError(''), 3000);
     },
   });
@@ -69,10 +73,16 @@ export default function DashboardPage() {
             <XCircle size={12} /> 已停止
           </span>
         );
-      case 'error':
+      case 'starting':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-            <AlertCircle size={12} /> 错误
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+            <RefreshCw size={12} className="animate-spin" /> 启动中
+          </span>
+        );
+      case 'stopping':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+            <RefreshCw size={12} className="animate-spin" /> 停止中
           </span>
         );
     }
@@ -191,7 +201,7 @@ export default function DashboardPage() {
                   <button
                     className="btn-primary text-sm flex items-center gap-1"
                     onClick={() => startMutation.mutate(tenant.id)}
-                    disabled={startMutation.isPending}
+                    disabled={tenant.status === 'starting' || tenant.status === 'stopping' || startMutation.isPending}
                   >
                     <Play size={14} /> 启动
                   </button>

@@ -1,3 +1,5 @@
+import { createServer, type IncomingMessage, type ServerResponse } from 'http'
+import { URL } from 'url'
 import { drizzle } from 'drizzle-orm/mysql2'
 import mysql from 'mysql2/promise'
 import Redis from 'ioredis'
@@ -7,6 +9,8 @@ import type {
   KookEvent,
   KookMessageEvent,
   IPlugin,
+  PluginContext,
+  ApiRouteDefinition,
 } from '@kook-saas/shared'
 
 import { KookApi } from './kookApi.js'
@@ -18,6 +22,7 @@ import { PluginLoader } from './pluginLoader.js'
 import { Dispatcher } from './dispatcher.js'
 import { CommandRouter } from './commandRouter.js'
 import { TimerManager } from './timerManager.js'
+import { createPluginRuntimeServer } from './pluginApiServer.js'
 
 export interface BotEngineConfig {
   tenantId: string
@@ -27,6 +32,8 @@ export interface BotEngineConfig {
   pluginConfigs?: Record<string, Record<string, any>>
   mysqlUrl: string
   redisUrl: string
+  runtimeApiPort?: number
+  runtimeApiToken?: string
 }
 
 export class BotEngine {
@@ -44,6 +51,7 @@ export class BotEngine {
   private timerManager = new TimerManager()
   private mysqlConnection!: mysql.Pool
   private heartbeatInterval: NodeJS.Timeout | null = null
+  private runtimeApiServer: ReturnType<typeof createServer> | null = null
 
   /** Externally registered plugin constructors/instances */
   private availablePlugins: IPlugin[] = []
@@ -126,6 +134,9 @@ export class BotEngine {
     this.dispatcher.collectHandlers(loadedPlugins)
     this.commandRouter.collectCommands(loadedPlugins)
 
+    // 8.5. Start internal runtime API
+    await this.startRuntimeApiServer()
+
     // 9. Connect to Kook Gateway via WebSocket
     this.gateway = new KookGateway({
       botToken,
@@ -174,6 +185,13 @@ export class BotEngine {
   async stop(): Promise<void> {
     this.logger.info(`Stopping bot engine for tenant ${this.config.tenantId}`)
     this.sendLog('info', 'Bot 引擎正在停止')
+
+    if (this.runtimeApiServer) {
+      await new Promise<void>((resolve) => {
+        this.runtimeApiServer?.close(() => resolve())
+      })
+      this.runtimeApiServer = null
+    }
 
     // Stop heartbeat
     if (this.heartbeatInterval) {
@@ -254,5 +272,30 @@ export class BotEngine {
     this.heartbeatInterval = setInterval(() => {
       this.sendHeartbeat()
     }, 30_000)
+  }
+
+  private async startRuntimeApiServer(): Promise<void> {
+    const port = this.config.runtimeApiPort
+    const token = this.config.runtimeApiToken
+    if (!port || !token) {
+      this.logger.info('Runtime API disabled: missing runtimeApiPort/runtimeApiToken')
+      return
+    }
+
+    this.runtimeApiServer = createPluginRuntimeServer({
+      tenantId: this.config.tenantId,
+      internalToken: token,
+      getPluginEntry: (pluginId) => this.pluginLoader.getPlugin(pluginId),
+    })
+
+    await new Promise<void>((resolve, reject) => {
+      this.runtimeApiServer?.once('error', reject)
+      this.runtimeApiServer?.listen(port, '127.0.0.1', () => {
+        this.runtimeApiServer?.off('error', reject)
+        resolve()
+      })
+    })
+
+    this.sendLog('info', `插件 Runtime API 已启动: 127.0.0.1:${port}`)
   }
 }

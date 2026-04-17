@@ -16,10 +16,14 @@ const configSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   INSTANCE_PORT_START: z.coerce.number().optional(),
   INSTANCE_PORT_END: z.coerce.number().optional(),
+  RUNTIME_API_PORT_START: z.coerce.number().default(22000),
+  RUNTIME_API_PORT_END: z.coerce.number().default(22999),
   BOT_ENGINE_ENTRY: z.string().optional(),
   RATE_LIMIT_AUTH: z.coerce.number().default(5),       // 认证接口：5次/分钟
   RATE_LIMIT_GENERAL: z.coerce.number().default(60),   // 通用接口：60次/分钟
   RATE_LIMIT_ADMIN: z.coerce.number().default(120),    // 管理接口：120次/分钟
+  MONITOR_ALERT_WEBHOOK: z.string().optional(),
+  ALERT_WEBHOOK: z.string().optional(),
 })
 
 export type PlatformConfig = z.infer<typeof configSchema>

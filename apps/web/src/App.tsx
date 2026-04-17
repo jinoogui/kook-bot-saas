@@ -10,6 +10,7 @@ import DashboardPage from './pages/DashboardPage';
 import BotSetupPage from './pages/BotSetupPage';
 import PluginStorePage from './pages/PluginStorePage';
 import PluginConfigPage from './pages/PluginConfigPage';
+import PluginRuntimePage from './pages/plugins/PluginRuntimePage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
 import MonitoringPage from './pages/MonitoringPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -69,6 +70,7 @@ function AppRoutes() {
         <Route path="/bot-setup" element={<BotSetupPage />} />
         <Route path="/plugins" element={<PluginStorePage />} />
         <Route path="/plugins/:id/config" element={<PluginConfigPage />} />
+        <Route path="/plugins/:id/runtime" element={<PluginRuntimePage />} />
         <Route path="/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/monitoring" element={<MonitoringPage />} />
       </Route>

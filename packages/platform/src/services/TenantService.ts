@@ -85,6 +85,18 @@ export class TenantService {
       .where(and(eq(tenants.id, tenantId), eq(tenants.userId, userId)))
   }
 
+  async markStartingIfStartable(tenantId: string): Promise<boolean> {
+    const client = (this.db as any).$client as { query: (sql: string, params: any[]) => Promise<any[]> } | undefined
+    if (!client) return false
+
+    const [result] = await client.query(
+      'UPDATE tenants SET status = ? WHERE id = ? AND status IN (?, ?)',
+      ['starting', tenantId, 'stopped', 'error'],
+    )
+    const affectedRows = (result as any)?.affectedRows ?? 0
+    return affectedRows > 0
+  }
+
   async updateStatus(tenantId: string, status: string, pid?: number | null, port?: number | null) {
     const updates: Record<string, any> = { status }
     if (pid !== undefined) updates.pid = pid

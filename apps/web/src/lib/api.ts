@@ -27,6 +27,13 @@ api.interceptors.response.use(
       localStorage.removeItem('user');
       // Let React router handle the redirect via AuthContext
     }
+
+    const payload = err.response?.data;
+    if (payload && typeof payload === 'object') {
+      err.code = (payload as any).code ?? err.code;
+      err.message = (payload as any).error ?? (payload as any).message ?? err.message;
+    }
+
     return Promise.reject(err);
   },
 );
@@ -44,7 +51,7 @@ export interface Tenant {
   botToken?: string;
   verifyToken?: string;
   encryptKey?: string;
-  status: 'running' | 'stopped' | 'error' | 'starting';
+  status: 'running' | 'stopped' | 'error' | 'starting' | 'stopping';
   assignedPort?: number;
   lastHeartbeat?: string;
   createdAt: string;
@@ -81,7 +88,7 @@ export interface Subscription {
 
 export interface InstanceStatus {
   tenantId: string;
-  status: 'running' | 'stopped' | 'error';
+  status: 'running' | 'stopped' | 'error' | 'starting' | 'stopping';
   uptime: number | null;
   lastHeartbeat: string | null;
   restartCount: number;
@@ -110,6 +117,16 @@ export interface InstanceLog {
   createdAt: string;
 }
 
+function toQuery(params?: Record<string, string | number | boolean | undefined | null>): string {
+  const query = new URLSearchParams();
+  if (!params) return '';
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    query.set(key, String(value));
+  }
+  return query.toString();
+}
+
 export interface AuditLog {
   id: number;
   userId: number;
@@ -121,6 +138,19 @@ export interface AuditLog {
   createdAt: string;
   username?: string;
   email?: string;
+}
+
+export type PaymentRiskDecision = 'pass' | 'review' | 'reject';
+
+export interface AdminStats {
+  userCount: number;
+  tenantCount: number;
+  runningCount: number;
+  totalRevenue: number;
+  todayRevenue: number;
+  pendingReviewCount: number;
+  riskRejectCount: number;
+  payConversion: number;
 }
 
 const auth = {
@@ -209,33 +239,189 @@ const subscriptions = {
     api.put(`/tenants/${tenantId}/subscriptions/${pluginId}/config`, config),
 };
 
+const pluginRuntime = {
+  request: (
+    tenantId: string,
+    pluginId: string,
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+    path: string,
+    data?: Record<string, unknown>,
+    params?: Record<string, string | number | boolean | undefined | null>,
+    idempotencyKey?: string,
+  ) => {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const query = toQuery(params);
+    const url = `/tenants/${tenantId}/plugins/${pluginId}/runtime${normalizedPath}${query ? `?${query}` : ''}`;
+    return api.request({
+      method,
+      url,
+      data,
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    });
+  },
+
+  ticket: {
+    list: (tenantId: string, guildId: string, params?: { status?: string; page?: number; size?: number }) =>
+      pluginRuntime.request(tenantId, 'ticket', 'GET', `/tickets/${guildId}`, undefined, params),
+    create: (tenantId: string, guildId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'ticket', 'POST', `/tickets/${guildId}`, data),
+    detail: (tenantId: string, id: number) =>
+      pluginRuntime.request(tenantId, 'ticket', 'GET', `/tickets/detail/${id}`),
+    assign: (tenantId: string, id: number, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'ticket', 'POST', `/tickets/${id}/assign`, data),
+    close: (tenantId: string, id: number, data: Record<string, unknown>, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'ticket', 'POST', `/tickets/${id}/close`, data, undefined, idempotencyKey),
+    getConfig: (tenantId: string) =>
+      pluginRuntime.request(tenantId, 'ticket', 'GET', '/config'),
+    saveConfig: (tenantId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'ticket', 'POST', '/config', data),
+  },
+
+  events: {
+    list: (tenantId: string, guildId: string, params?: { status?: string; page?: number; size?: number }) =>
+      pluginRuntime.request(tenantId, 'events', 'GET', `/items/${guildId}`, undefined, params),
+    create: (tenantId: string, guildId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'events', 'POST', `/items/${guildId}`, data),
+    join: (tenantId: string, id: number, data: Record<string, unknown>, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'events', 'POST', `/items/${id}/join`, data, undefined, idempotencyKey),
+    cancel: (tenantId: string, id: number, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'events', 'POST', `/items/${id}/cancel`, data),
+    participants: (tenantId: string, id: number) =>
+      pluginRuntime.request(tenantId, 'events', 'GET', `/items/${id}/participants`),
+    close: (tenantId: string, id: number, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'events', 'POST', `/items/${id}/close`, {}, undefined, idempotencyKey),
+    getConfig: (tenantId: string) =>
+      pluginRuntime.request(tenantId, 'events', 'GET', '/config'),
+    saveConfig: (tenantId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'events', 'POST', '/config', data),
+  },
+
+  raffle: {
+    list: (tenantId: string, guildId: string, params?: { status?: string; page?: number; size?: number }) =>
+      pluginRuntime.request(tenantId, 'raffle', 'GET', `/items/${guildId}`, undefined, params),
+    create: (tenantId: string, guildId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'raffle', 'POST', `/items/${guildId}`, data),
+    join: (tenantId: string, id: number, data: Record<string, unknown>, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'raffle', 'POST', `/items/${id}/join`, data, undefined, idempotencyKey),
+    participants: (tenantId: string, id: number) =>
+      pluginRuntime.request(tenantId, 'raffle', 'GET', `/items/${id}/participants`),
+    draw: (tenantId: string, id: number, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'raffle', 'POST', `/items/${id}/draw`, {}, undefined, idempotencyKey),
+    getConfig: (tenantId: string) =>
+      pluginRuntime.request(tenantId, 'raffle', 'GET', '/config'),
+    saveConfig: (tenantId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'raffle', 'POST', '/config', data),
+  },
+
+  polls: {
+    list: (tenantId: string, guildId: string, params?: { status?: string; page?: number; size?: number }) =>
+      pluginRuntime.request(tenantId, 'polls', 'GET', `/items/${guildId}`, undefined, params),
+    create: (tenantId: string, guildId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'polls', 'POST', `/items/${guildId}`, data),
+    vote: (tenantId: string, id: number, data: Record<string, unknown>, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'polls', 'POST', `/items/${id}/vote`, data, undefined, idempotencyKey),
+    result: (tenantId: string, id: number) =>
+      pluginRuntime.request(tenantId, 'polls', 'GET', `/items/${id}/result`),
+    close: (tenantId: string, id: number, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'polls', 'POST', `/items/${id}/close`, {}, undefined, idempotencyKey),
+    getConfig: (tenantId: string) =>
+      pluginRuntime.request(tenantId, 'polls', 'GET', '/config'),
+    saveConfig: (tenantId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'polls', 'POST', '/config', data),
+  },
+
+  quests: {
+    templates: (tenantId: string, guildId: string) =>
+      pluginRuntime.request(tenantId, 'quests', 'GET', `/templates/${guildId}`),
+    createTemplate: (tenantId: string, guildId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'quests', 'POST', `/templates/${guildId}`, data),
+    setTemplateEnabled: (tenantId: string, id: number, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'quests', 'PATCH', `/templates/${id}/enabled`, data),
+    userProgress: (tenantId: string, guildId: string, userId: string, params?: { dateKey?: string }) =>
+      pluginRuntime.request(tenantId, 'quests', 'GET', `/progress/${guildId}/${userId}`, undefined, params),
+    increment: (tenantId: string, guildId: string, userId: string, questCode: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'quests', 'POST', `/progress/${guildId}/${userId}/${questCode}/increment`, data),
+    claim: (tenantId: string, guildId: string, userId: string, questCode: string, data: Record<string, unknown>, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'quests', 'POST', `/progress/${guildId}/${userId}/${questCode}/claim`, data, undefined, idempotencyKey),
+    leaderboard: (tenantId: string, guildId: string, params?: { dateKey?: string; limit?: number }) =>
+      pluginRuntime.request(tenantId, 'quests', 'GET', `/leaderboard/${guildId}`, undefined, params),
+    getConfig: (tenantId: string) =>
+      pluginRuntime.request(tenantId, 'quests', 'GET', '/config'),
+    saveConfig: (tenantId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'quests', 'POST', '/config', data),
+  },
+
+  announcer: {
+    list: (tenantId: string, guildId: string, params?: { status?: string; page?: number; size?: number }) =>
+      pluginRuntime.request(tenantId, 'announcer', 'GET', `/tasks/${guildId}`, undefined, params),
+    create: (tenantId: string, guildId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'announcer', 'POST', `/tasks/${guildId}`, data),
+    cancel: (tenantId: string, id: number, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'announcer', 'POST', `/tasks/${id}/cancel`, {}, undefined, idempotencyKey),
+    sendNow: (tenantId: string, id: number, idempotencyKey?: string) =>
+      pluginRuntime.request(tenantId, 'announcer', 'POST', `/tasks/${id}/send`, {}, undefined, idempotencyKey),
+    getConfig: (tenantId: string) =>
+      pluginRuntime.request(tenantId, 'announcer', 'GET', '/config'),
+    saveConfig: (tenantId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'announcer', 'POST', '/config', data),
+  },
+
+  antiSpam: {
+    getRule: (tenantId: string, guildId: string) =>
+      pluginRuntime.request(tenantId, 'anti-spam', 'GET', `/rules/${guildId}`),
+    updateRule: (tenantId: string, guildId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'anti-spam', 'PUT', `/rules/${guildId}`, data),
+    listWhitelist: (tenantId: string, guildId: string) =>
+      pluginRuntime.request(tenantId, 'anti-spam', 'GET', `/whitelist/${guildId}`),
+    addWhitelist: (tenantId: string, guildId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'anti-spam', 'POST', `/whitelist/${guildId}`, data),
+    removeWhitelist: (tenantId: string, guildId: string, userId: string) =>
+      pluginRuntime.request(tenantId, 'anti-spam', 'DELETE', `/whitelist/${guildId}/${userId}`),
+    listViolations: (tenantId: string, guildId: string, params?: { page?: number; size?: number }) =>
+      pluginRuntime.request(tenantId, 'anti-spam', 'GET', `/violations/${guildId}`, undefined, params),
+    getConfig: (tenantId: string) =>
+      pluginRuntime.request(tenantId, 'anti-spam', 'GET', '/config'),
+    saveConfig: (tenantId: string, data: Record<string, unknown>) =>
+      pluginRuntime.request(tenantId, 'anti-spam', 'POST', '/config', data),
+  },
+};
+
 const admin = {
-  getStats: () => api.get('/admin/stats'),
-  getUsers: (page = 1, size = 20) => api.get(`/admin/users?page=${page}&size=${size}`),
+  getStats: () => api.get<AdminStats>('/admin/stats'),
+  getUsers: (params?: { page?: number; size?: number; role?: string; status?: string; keyword?: string; startDate?: string; endDate?: string }) =>
+    api.get(`/admin/users?${toQuery(params)}`),
   updateUser: (id: number, data: { role?: string; status?: string }) =>
     api.patch(`/admin/users/${id}`, data),
-  getTenants: () => api.get('/admin/tenants'),
+  batchUsers: (ids: number[], data: { role?: string; status?: string }) =>
+    api.post('/admin/users/batch', { ids, ...data }),
+  getTenants: (params?: { page?: number; size?: number; status?: string; keyword?: string; ownerId?: number; startDate?: string; endDate?: string }) =>
+    api.get(`/admin/tenants?${toQuery(params)}`),
   stopTenant: (id: string) => api.post(`/admin/tenants/${id}/stop`),
   restartTenant: (id: string) => api.post(`/admin/tenants/${id}/restart`),
+  batchTenants: (ids: string[], action: 'stop' | 'restart') =>
+    api.post('/admin/tenants/batch', { ids, action }),
   getPlugins: () => api.get('/admin/plugins'),
   updatePlugin: (id: string, data: Record<string, unknown>) =>
     api.patch(`/admin/plugins/${id}`, data),
-  getSubscriptions: () => api.get('/admin/subscriptions'),
-  getPayments: () => api.get('/admin/payments'),
-  getAuditLogs: (params?: { action?: string; userId?: number; startDate?: string; endDate?: string; page?: number; size?: number }) => {
-    const query = new URLSearchParams();
-    if (params?.action) query.set('action', params.action);
-    if (params?.userId) query.set('userId', String(params.userId));
-    if (params?.startDate) query.set('startDate', params.startDate);
-    if (params?.endDate) query.set('endDate', params.endDate);
-    if (params?.page) query.set('page', String(params.page));
-    if (params?.size) query.set('size', String(params.size));
-    return api.get<{ rows: AuditLog[]; total: number; page: number; size: number }>(
-      `/admin/audit-logs?${query.toString()}`
-    );
-  },
+  getSubscriptions: (params?: { page?: number; size?: number; status?: string; planType?: string; tenantId?: string; pluginId?: string; keyword?: string; startDate?: string; endDate?: string }) =>
+    api.get(`/admin/subscriptions?${toQuery(params)}`),
+  getPayments: (params?: { page?: number; size?: number; status?: string; provider?: string; tenantId?: string; pluginId?: string; userId?: number; keyword?: string; riskDecision?: PaymentRiskDecision; startDate?: string; endDate?: string }) =>
+    api.get(`/admin/payments?${toQuery(params)}`),
+  exportSubscriptionsCsv: (params?: { status?: string; planType?: string; tenantId?: string; pluginId?: string; keyword?: string; startDate?: string; endDate?: string }) =>
+    api.get(`/admin/subscriptions/export.csv?${toQuery(params)}`, { responseType: 'blob' }),
+  exportPaymentsCsv: (params?: { status?: string; provider?: string; tenantId?: string; pluginId?: string; userId?: number; keyword?: string; riskDecision?: PaymentRiskDecision; startDate?: string; endDate?: string }) =>
+    api.get(`/admin/payments/export.csv?${toQuery(params)}`, { responseType: 'blob' }),
+  exportAuditLogsCsv: (params?: { action?: string; userId?: number; startDate?: string; endDate?: string }) =>
+    api.get(`/admin/audit-logs/export.csv?${toQuery(params)}`, { responseType: 'blob' }),
+  getAuditLogs: (params?: { action?: string; userId?: number; startDate?: string; endDate?: string; page?: number; size?: number }) =>
+    api.get<{ rows: AuditLog[]; total: number; page: number; size: number }>(
+      `/admin/audit-logs?${toQuery(params)}`
+    ),
   confirmPayment: (id: number) => api.post(`/admin/payments/${id}/confirm`),
   rejectPayment: (id: number) => api.post(`/admin/payments/${id}/reject`),
+  refundPayment: (id: number) => api.post(`/admin/payments/${id}/refund`),
+  batchPayments: (ids: number[], action: 'confirm' | 'reject') =>
+    api.post('/admin/payments/batch', { ids, action }),
 };
 
-export default { auth, tenants, instances, plugins, subscriptions, admin };
+export default { auth, tenants, instances, plugins, subscriptions, pluginRuntime, admin };

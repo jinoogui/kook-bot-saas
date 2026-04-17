@@ -10,12 +10,16 @@ import { InstanceManager } from './services/InstanceService.js'
 import { HealthMonitor } from './services/HealthMonitor.js'
 import { AuditService } from './services/AuditService.js'
 import { LogService } from './services/LogService.js'
+import { SubscriptionApplyQueueService } from './services/SubscriptionApplyQueueService.js'
+import { PaymentRiskService } from './services/PaymentRiskService.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerTenantRoutes } from './routes/tenants.js'
 import { registerInstanceRoutes } from './routes/instances.js'
 import { registerPluginRoutes } from './routes/plugins.js'
+import { registerTenantPluginRuntimeRoutes } from './routes/tenantPluginRuntime.js'
 import { registerSubscriptionRoutes } from './routes/subscriptions.js'
 import { registerAdminRoutes } from './routes/admin.js'
+import { getAllPlugins } from '@kook-saas/plugins'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -49,7 +53,11 @@ async function main() {
   // 4. 初始化服务
   const authService = new AuthService(db, app)
   const tenantService = new TenantService(db, config.JWT_SECRET)
-  const subscriptionService = new SubscriptionService(db)
+  const paymentRiskService = new PaymentRiskService(db)
+  const pluginConfigSchemaMap = Object.fromEntries(
+    getAllPlugins().map((plugin) => [plugin.id, plugin.getConfigSchema()]),
+  )
+  const subscriptionService = new SubscriptionService(db, paymentRiskService, pluginConfigSchemaMap)
   const catalogService = new PluginCatalogService(db)
   const auditService = new AuditService(db)
   const logService = new LogService(db)
@@ -164,6 +172,57 @@ async function main() {
         auto_leave_minutes: { type: 'number', title: '空闲自动退出（分钟）', description: '队列播完后等待多久自动退出语音频道，0 为不退出', default: 5 },
       },
     }},
+    { id: 'ticket', name: '工单系统', description: '支持工单创建、分配、关闭和日志追踪', version: '1.0.0', category: 'utility' as const, dependencies: [], tier: 'paid' as const, priceMonthly: 1200, priceYearly: 12000, configSchema: {
+      properties: {
+        support_channel_id: { type: 'string', title: '受理频道 ID', default: '' },
+        default_priority: { type: 'string', title: '默认优先级', enum: ['low', 'normal', 'high'], default: 'normal' },
+        auto_close_hours: { type: 'number', title: '自动关闭时长（小时）', default: 72 },
+      },
+    }},
+    { id: 'events', name: '活动报名', description: '活动创建、报名、提醒与自动结束', version: '1.0.0', category: 'social' as const, dependencies: [], tier: 'paid' as const, priceMonthly: 1000, priceYearly: 10000, configSchema: {
+      properties: {
+        reminder_before_minutes: { type: 'number', title: '提醒提前分钟', default: 30 },
+        default_max_participants: { type: 'number', title: '默认人数上限', default: 0 },
+      },
+    }},
+    { id: 'raffle', name: '抽奖系统', description: '创建抽奖、参与抽奖和自动开奖', version: '1.0.0', category: 'social' as const, dependencies: [], tier: 'paid' as const, priceMonthly: 800, priceYearly: 8000, configSchema: {
+      properties: {
+        default_duration_minutes: { type: 'number', title: '默认开奖时长（分钟）', default: 30 },
+        prevent_repeat_join: { type: 'boolean', title: '防重复参与', default: true },
+      },
+    }},
+    { id: 'polls', name: '投票系统', description: '创建投票、投票统计、自动结束', version: '1.0.0', category: 'social' as const, dependencies: [], tier: 'paid' as const, priceMonthly: 700, priceYearly: 7000, configSchema: {
+      properties: {
+        default_duration_minutes: { type: 'number', title: '默认结束时长（分钟）', default: 30 },
+        default_allow_multi: { type: 'boolean', title: '默认允许多选', default: false },
+      },
+    }},
+    { id: 'quests', name: '每日任务', description: '任务模板、进度累计、积分领奖', version: '1.0.0', category: 'engagement' as const, dependencies: ['points'], tier: 'paid' as const, priceMonthly: 900, priceYearly: 9000, configSchema: {
+      properties: {
+        enabled: { type: 'boolean', title: '启用任务系统', default: true },
+        auto_claim: { type: 'boolean', title: '自动领取奖励', default: false },
+        daily_reset_hour: { type: 'number', title: '每日重置小时', default: 4 },
+        message_quest_code: { type: 'string', title: '消息任务编码', description: '配置后消息事件会自动累计对应任务进度', default: '' },
+      },
+    }},
+    { id: 'announcer', name: '定时公告', description: '定时投递公告消息并支持失败重试', version: '1.0.0', category: 'utility' as const, dependencies: [], tier: 'paid' as const, priceMonthly: 600, priceYearly: 6000, configSchema: {
+      properties: {
+        enabled: { type: 'boolean', title: '启用定时公告', default: true },
+        max_retry: { type: 'number', title: '最大重试次数', default: 3 },
+        retry_delay_minutes: { type: 'number', title: '重试间隔（分钟）', default: 5 },
+      },
+    }},
+    { id: 'anti-spam', name: '防刷屏', description: '频率/重复/@全体检测和自动处理', version: '1.0.0', category: 'moderation' as const, dependencies: ['moderation'], tier: 'paid' as const, priceMonthly: 900, priceYearly: 9000, configSchema: {
+      properties: {
+        enabled: { type: 'boolean', title: '启用防刷屏', default: true },
+        default_action: { type: 'string', title: '默认处理动作', enum: ['warn', 'mute', 'delete'], default: 'warn' },
+        default_window_seconds: { type: 'number', title: '默认检测窗口（秒）', default: 10 },
+        default_max_messages: { type: 'number', title: '默认窗口消息上限', default: 6 },
+        default_duplicate_threshold: { type: 'number', title: '默认重复阈值', default: 3 },
+        default_block_at_all: { type: 'boolean', title: '默认拦截@全体', default: true },
+        default_mute_hours: { type: 'number', title: '默认禁言时长（小时）', default: 1 },
+      },
+    }},
   ]
   await catalogService.syncFromMetadata(pluginMetas)
   console.info(`[Platform] 已同步 ${pluginMetas.length} 个插件到目录`)
@@ -179,10 +238,13 @@ async function main() {
       mysqlUrl: config.TENANT_MYSQL_URL,
       redisUrl: config.REDIS_URL,
       engineEntryPath: engineEntry,
+      runtimeApiPortStart: config.RUNTIME_API_PORT_START,
+      runtimeApiPortEnd: config.RUNTIME_API_PORT_END,
     },
     logService,
   )
 
+  const applyQueue = new SubscriptionApplyQueueService(db, tenantService, instanceManager)
   const healthMonitor = new HealthMonitor(instanceManager, tenantService)
 
   // 5. 注册路由
@@ -190,15 +252,17 @@ async function main() {
   registerTenantRoutes(app, tenantService, instanceManager, auditService)
   registerInstanceRoutes(app, instanceManager, tenantService, auditService, logService)
   registerPluginRoutes(app, catalogService)
-  registerSubscriptionRoutes(app, subscriptionService, tenantService, auditService)
+  registerTenantPluginRuntimeRoutes(app, tenantService, instanceManager, subscriptionService, auditService)
+  registerSubscriptionRoutes(app, subscriptionService, tenantService, instanceManager, applyQueue, auditService)
   registerAdminRoutes(app, { db, instanceManager, tenantService, auditService, subscriptionService })
 
   // 6. 启动服务器
   await app.listen({ port: config.PLATFORM_PORT, host: '0.0.0.0' })
   console.info(`[Platform] HTTP 服务器已启动: http://0.0.0.0:${config.PLATFORM_PORT}`)
 
-  // 7. 启动健康监控
+  // 7. 启动健康监控与异步生效队列
   healthMonitor.start()
+  await applyQueue.start()
 
   // 8. 恢复之前运行的实例
   await healthMonitor.recoverInstances()
@@ -218,6 +282,7 @@ async function main() {
     console.info(`\n[Platform] 收到 ${signal}，开始关闭...`)
     clearInterval(subscriptionCheckTimer)
     healthMonitor.stop()
+    applyQueue.stop()
     await instanceManager.stopAll()
     await app.close()
     await closePlatformDB()

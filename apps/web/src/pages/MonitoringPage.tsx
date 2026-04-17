@@ -101,6 +101,9 @@ export default function MonitoringPage() {
     switch (s) {
       case 'running':
         return <CheckCircle className="text-green-500" size={20} />;
+      case 'starting':
+      case 'stopping':
+        return <RefreshCw className="text-blue-500 animate-spin" size={20} />;
       case 'stopped':
         return <XCircle className="text-gray-400" size={20} />;
       case 'error':
@@ -114,6 +117,10 @@ export default function MonitoringPage() {
     switch (s) {
       case 'running':
         return '运行中';
+      case 'starting':
+        return '启动中';
+      case 'stopping':
+        return '停止中';
       case 'stopped':
         return '已停止';
       case 'error':

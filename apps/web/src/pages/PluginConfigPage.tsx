@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, ToggleLeft, ToggleRight, RefreshCw, Clock } from 'lucide-react';
+import { ArrowLeft, Save, ToggleLeft, ToggleRight, RefreshCw, Clock, ExternalLink } from 'lucide-react';
 import api, { type Plugin, type Subscription } from '../lib/api';
 import { WelcomeCardEditor } from '../components/welcome-card/WelcomeCardEditor';
 
@@ -19,6 +19,7 @@ export default function PluginConfigPage() {
   const [enabled, setEnabled] = useState(true);
   const [planType, setPlanType] = useState('monthly');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [runtimeHint, setRuntimeHint] = useState<string | null>(null);
 
   const { data: plugin } = useQuery({
     queryKey: ['plugin', pluginId],
@@ -48,42 +49,84 @@ export default function PluginConfigPage() {
 
   const existingSub = subscriptions?.find((s: Subscription) => s.pluginId === pluginId);
   const isWelcomePlugin = pluginId === 'welcome';
+  const pluginTier = plugin?.tier;
+  const isPaidPlugin = pluginTier === 'paid';
+  const canEditConfig = !!existingSub && existingSub.status === 'active';
+
+  useEffect(() => {
+    if (pluginTier === 'paid' && planType === 'lifetime') {
+      setPlanType('monthly');
+    }
+    if (pluginTier === 'free' && planType !== 'lifetime') {
+      setPlanType('lifetime');
+    }
+  }, [pluginTier, planType]);
 
   const subscribeMutation = useMutation({
     mutationFn: () => api.subscriptions.subscribe(selectedTenant, pluginId!, planType),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions', selectedTenant] });
+      setRuntimeHint(null);
       const data = res.data as any;
       if (data?.paymentRequired) {
-        setMessage({ type: 'success', text: '订单已创建，等待管理员确认支付后激活' });
+        if (data?.riskDecision === 'review') {
+          setMessage({ type: 'success', text: `订单已创建并进入人工复核：${data?.riskReason || '请等待管理员审核'}` });
+        } else {
+          setMessage({ type: 'success', text: '订单已创建，等待管理员确认支付后激活' });
+        }
       } else {
         setMessage({ type: 'success', text: '订阅成功' });
       }
       setTimeout(() => setMessage(null), 5000);
     },
-    onError: () => setMessage({ type: 'error', text: '订阅失败' }),
+    onError: (err: any) => {
+      const detail = err?.code ? `${err.code}: ${err.message || '订阅失败'}` : (err?.message || '订阅失败');
+      setMessage({ type: 'error', text: detail });
+    },
   });
 
   const toggleMutation = useMutation({
     mutationFn: (newEnabled: boolean) =>
       api.subscriptions.toggle(selectedTenant, pluginId!, newEnabled),
-    onSuccess: (_, newEnabled) => {
+    onSuccess: (res, newEnabled) => {
       setEnabled(newEnabled);
       queryClient.invalidateQueries({ queryKey: ['subscriptions', selectedTenant] });
+      const runtime = (res.data || {}) as { applied?: 'restarted' | 'queued' | 'noop'; applyError?: string };
+      if (runtime.applied === 'restarted') {
+        setRuntimeHint('配置已立即生效（实例已自动重启）');
+      } else if (runtime.applied === 'queued') {
+        setRuntimeHint(runtime.applyError ? `已记录生效请求：${runtime.applyError}` : '实例状态处理中，变更将在运行状态稳定后生效');
+      } else {
+        setRuntimeHint('实例当前未运行，变更将在下次启动后生效');
+      }
       setMessage({ type: 'success', text: newEnabled ? '已启用' : '已禁用' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '操作失败' }),
+    onError: (err: any) => {
+      const detail = err?.code ? `${err.code}: ${err.message || '操作失败'}` : (err?.message || '操作失败');
+      setMessage({ type: 'error', text: detail });
+    },
   });
 
   const configMutation = useMutation({
     mutationFn: () => api.subscriptions.updateConfig(selectedTenant, pluginId!, config),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions', selectedTenant] });
+      const runtime = (res.data || {}) as { applied?: 'restarted' | 'queued' | 'noop'; applyError?: string };
+      if (runtime.applied === 'restarted') {
+        setRuntimeHint('配置已立即生效（实例已自动重启）');
+      } else if (runtime.applied === 'queued') {
+        setRuntimeHint(runtime.applyError ? `已记录生效请求：${runtime.applyError}` : '实例状态处理中，配置将在运行状态稳定后生效');
+      } else {
+        setRuntimeHint('实例当前未运行，配置将在下次启动后生效');
+      }
       setMessage({ type: 'success', text: '配置已保存' });
       setTimeout(() => setMessage(null), 3000);
     },
-    onError: () => setMessage({ type: 'error', text: '保存失败' }),
+    onError: (err: any) => {
+      const detail = err?.code ? `${err.code}: ${err.message || '保存失败'}` : (err?.message || '保存失败');
+      setMessage({ type: 'error', text: detail });
+    },
   });
 
   const rawSchema = (plugin as any)?.config_schema || (plugin as any)?.configSchema;
@@ -211,9 +254,14 @@ export default function PluginConfigPage() {
                   value={planType}
                   onChange={(e) => setPlanType(e.target.value)}
                 >
-                  <option value="monthly">月付</option>
-                  <option value="yearly">年付</option>
-                  <option value="free">免费</option>
+                  {isPaidPlugin ? (
+                    <>
+                      <option value="monthly">月付</option>
+                      <option value="yearly">年付</option>
+                    </>
+                  ) : (
+                    <option value="lifetime">永久</option>
+                  )}
                 </select>
               </div>
               <button
@@ -244,6 +292,34 @@ export default function PluginConfigPage() {
                   </button>
                 </div>
               </div>
+
+              {existingSub?.status === 'active' && (
+                <div className="card flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold">插件业务操作</h3>
+                    <p className="text-sm text-gray-500">进入 runtime 业务页完成创建/关键动作/异常验证</p>
+                  </div>
+                  <button
+                    className="btn-secondary inline-flex items-center gap-2"
+                    onClick={() => navigate(`/plugins/${pluginId}/runtime`, { state: { tenantId: selectedTenant } })}
+                  >
+                    <ExternalLink size={16} />
+                    进入业务页
+                  </button>
+                </div>
+              )}
+
+              {runtimeHint && (
+                <div className="card border-primary-200 bg-primary-50 text-sm text-primary-700">
+                  {runtimeHint}
+                </div>
+              )}
+
+              {!canEditConfig && (
+                <div className="card border-amber-200 bg-amber-50 text-sm text-amber-700">
+                  当前订阅未激活，暂不支持保存配置。
+                </div>
+              )}
 
               {/* Config form */}
               {(isWelcomePlugin || (schemaProperties && Object.keys(schemaProperties).length > 0)) && (
@@ -277,7 +353,7 @@ export default function PluginConfigPage() {
                     <button
                       type="submit"
                       className="btn-primary flex items-center gap-2"
-                      disabled={configMutation.isPending}
+                      disabled={configMutation.isPending || !canEditConfig}
                     >
                       <Save size={16} />
                       {configMutation.isPending ? '保存中...' : '保存配置'}

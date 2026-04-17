@@ -87,6 +87,62 @@ export {
   pluginLevelsConfigs,
 } from './levels/schema.js'
 
+// ── Ticket Plugin ──────────────────────────────
+export { TicketPlugin } from './ticket/index.js'
+export { TicketService } from './ticket/service.js'
+export {
+  pluginTicketTickets,
+  pluginTicketLogs,
+} from './ticket/schema.js'
+
+// ── Events Plugin ──────────────────────────────
+export { EventsPlugin } from './events/index.js'
+export { EventsService } from './events/service.js'
+export {
+  pluginEventsItems,
+  pluginEventsParticipants,
+} from './events/schema.js'
+
+// ── Raffle Plugin ──────────────────────────────
+export { RafflePlugin } from './raffle/index.js'
+export { RaffleService } from './raffle/service.js'
+export {
+  pluginRaffleItems,
+  pluginRaffleParticipants,
+} from './raffle/schema.js'
+
+// ── Polls Plugin ───────────────────────────────
+export { PollsPlugin } from './polls/index.js'
+export { PollsService } from './polls/service.js'
+export {
+  pluginPollsItems,
+  pluginPollsVotes,
+} from './polls/schema.js'
+
+// ── Quests Plugin ──────────────────────────────
+export { QuestsPlugin } from './quests/index.js'
+export { QuestsService } from './quests/service.js'
+export {
+  pluginQuestsTemplates,
+  pluginQuestsProgress,
+} from './quests/schema.js'
+
+// ── Announcer Plugin ───────────────────────────
+export { AnnouncerPlugin } from './announcer/index.js'
+export { AnnouncerService } from './announcer/service.js'
+export {
+  pluginAnnouncerTasks,
+} from './announcer/schema.js'
+
+// ── Anti Spam Plugin ───────────────────────────
+export { AntiSpamPlugin } from './anti-spam/index.js'
+export { AntiSpamService } from './anti-spam/service.js'
+export {
+  pluginAntiSpamRules,
+  pluginAntiSpamViolations,
+  pluginAntiSpamWhitelist,
+} from './anti-spam/schema.js'
+
 // ── Plugin Registry ─────────────────────────────
 import { WelcomePlugin } from './welcome/index.js'
 import { PointsPlugin } from './points/index.js'
@@ -99,6 +155,13 @@ import { AudioPlayerPlugin } from './audio-player/index.js'
 import { ModerationPlugin } from './moderation/index.js'
 import { VoicePointsPlugin } from './voice-points/index.js'
 import { LevelPlugin } from './levels/index.js'
+import { TicketPlugin } from './ticket/index.js'
+import { EventsPlugin } from './events/index.js'
+import { RafflePlugin } from './raffle/index.js'
+import { PollsPlugin } from './polls/index.js'
+import { QuestsPlugin } from './quests/index.js'
+import { AnnouncerPlugin } from './announcer/index.js'
+import { AntiSpamPlugin } from './anti-spam/index.js'
 
 /**
  * 返回所有已注册插件的实例列表
@@ -116,5 +179,12 @@ export function getAllPlugins(): IPlugin[] {
     new ModerationPlugin(),
     new VoicePointsPlugin(),
     new LevelPlugin(),
+    new TicketPlugin(),
+    new EventsPlugin(),
+    new RafflePlugin(),
+    new PollsPlugin(),
+    new QuestsPlugin(),
+    new AnnouncerPlugin(),
+    new AntiSpamPlugin(),
   ]
 }

@@ -38,6 +38,27 @@ export class RoleClaimService {
     }
   }
 
+  private async isRoleAllowed(guildId: string, roleId: string, channelId?: string, msgId?: string): Promise<boolean> {
+    const rows = await this.ctx.db.drizzle
+      .select({ channelId: pluginRoleClaimConfigs.channelId, messageId: pluginRoleClaimConfigs.messageId })
+      .from(pluginRoleClaimConfigs)
+      .where(and(
+        eq(pluginRoleClaimConfigs.tenantId, this.ctx.tenantId),
+        eq(pluginRoleClaimConfigs.guildId, guildId),
+        eq(pluginRoleClaimConfigs.roleId, roleId),
+        eq(pluginRoleClaimConfigs.enabled, 1),
+      ))
+
+    if (!rows.length) return false
+    if (!channelId) return true
+
+    return rows.some((row: any) => {
+      if (row.channelId !== channelId) return false
+      if (!row.messageId) return true
+      return !!msgId && row.messageId === msgId
+    })
+  }
+
   async onButtonClick(
     userId: string,
     guildId: string,
@@ -45,9 +66,17 @@ export class RoleClaimService {
     channelId: string,
     msgId: string,
   ): Promise<void> {
+    void channelId
+    void msgId
     if (!value.startsWith('role_claim:')) return
     const roleId = value.replace('role_claim:', '')
     if (!roleId) return
+
+    const allowed = await this.isRoleAllowed(guildId, roleId, channelId, msgId)
+    if (!allowed) {
+      await this.ctx.kookApi.sendDirectMessage(userId, '❌ 该身份组按钮已失效或不允许领取')
+      return
+    }
 
     const result = await this.toggleRole(userId, guildId, roleId)
     try {

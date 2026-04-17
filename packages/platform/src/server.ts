@@ -36,27 +36,43 @@ export async function createServer(opts: {
     max: opts.rateLimitGeneral ?? 60,
     timeWindow: '1 minute',
     keyGenerator: (request: any) => {
-      // 已认证用户用 userId，未认证用 IP
-      try {
-        const decoded = app.jwt.decode(
-          request.headers.authorization?.replace('Bearer ', '') || ''
-        ) as any
-        if (decoded?.userId) return `user:${decoded.userId}`
-      } catch {}
+      const userId = request.user?.userId
+      if (userId) return `user:${userId}`
       return request.ip
     },
     errorResponseBuilder: () => ({
+      success: false,
+      code: 'RATE_LIMIT_EXCEEDED',
       error: '请求过于频繁，请稍后再试',
       statusCode: 429,
     }),
   })
 
-  // JWT 认证 decorator
+  app.addHook('onRequest', async (request: any) => {
+    const requestId = request.id || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    request.requestId = requestId
+  })
+
+  app.setErrorHandler((error, request: any, reply) => {
+    const statusCode = (error as any)?.statusCode && Number.isInteger((error as any).statusCode)
+      ? (error as any).statusCode
+      : 500
+    const code = (error as any)?.code || (statusCode >= 500 ? 'INTERNAL_SERVER_ERROR' : 'REQUEST_ERROR')
+    const message = error.message || '服务器内部错误'
+
+    reply.code(statusCode).send({
+      success: false,
+      code,
+      error: message,
+      requestId: request.requestId,
+    })
+  })
+
   app.decorate('authenticate', async (request: any, reply: any) => {
     try {
       await request.jwtVerify()
     } catch (err) {
-      return reply.code(401).send({ error: '未登录或 Token 已过期' })
+      return reply.code(401).send({ success: false, code: 'UNAUTHORIZED', error: '未登录或 Token 已过期', requestId: request.requestId })
     }
   })
 
@@ -66,7 +82,7 @@ export async function createServer(opts: {
       await request.jwtVerify()
       const userId = request.user?.userId
       if (!userId) {
-        return reply.code(401).send({ error: '未登录或 Token 已过期' })
+        return reply.code(401).send({ success: false, code: 'UNAUTHORIZED', error: '未登录或 Token 已过期', requestId: request.requestId })
       }
       const [user] = await opts.db
         .select({ role: platformUsers.role })
@@ -74,10 +90,10 @@ export async function createServer(opts: {
         .where(eq(platformUsers.id, userId))
         .limit(1)
       if (!user || user.role !== 'admin') {
-        return reply.code(403).send({ error: '需要管理员权限' })
+        return reply.code(403).send({ success: false, code: 'FORBIDDEN', error: '需要管理员权限', requestId: request.requestId })
       }
     } catch (err) {
-      return reply.code(401).send({ error: '未登录或 Token 已过期' })
+      return reply.code(401).send({ success: false, code: 'UNAUTHORIZED', error: '未登录或 Token 已过期', requestId: request.requestId })
     }
   })
 

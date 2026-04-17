@@ -2,7 +2,7 @@ import { drizzle } from 'drizzle-orm/mysql2'
 import mysql from 'mysql2/promise'
 import * as schema from './schema/index.js'
 
-export type PlatformDB = ReturnType<typeof drizzle<typeof schema>>
+export type PlatformDB = ReturnType<typeof drizzle>
 
 let pool: mysql.Pool | null = null
 let db: PlatformDB | null = null
@@ -22,9 +22,9 @@ export async function initPlatformDB(url: string): Promise<PlatformDB> {
   await conn.ping()
   conn.release()
 
-  db = drizzle(pool, { schema, mode: 'default' })
+  db = drizzle(pool, { schema, mode: 'default' }) as unknown as PlatformDB
   console.info('[PlatformDB] Connected to platform database')
-  return db
+  return db as PlatformDB
 }
 
 export async function closePlatformDB(): Promise<void> {
@@ -38,7 +38,7 @@ export async function closePlatformDB(): Promise<void> {
 
 export function getPlatformDB(): PlatformDB {
   if (!db) throw new Error('Platform DB not initialized. Call initPlatformDB first.')
-  return db
+  return db as PlatformDB
 }
 
 export { schema }
